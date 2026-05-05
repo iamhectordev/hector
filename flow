@@ -1,0 +1,403 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   "pyyaml>=6.0",
+#   "click>=8.1",
+# ]
+# ///
+
+import re
+import sys
+from pathlib import Path
+
+import click
+import yaml
+
+ROOT = Path(__file__).parent
+TREE_FILE = ROOT / "tree.yaml"
+
+VALID_STATUSES = {"idea", "open", "designing", "ready", "done"}
+VALID_PRIORITIES = {"P0", "P1", "P2"}
+SLUG_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$")
+PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2}
+MAX_DEPTH = 2  # domain (0) → feature (1), no deeper
+
+
+# ── I/O ──────────────────────────────────────────────────────────────────────
+
+
+def load() -> list:
+    if not TREE_FILE.exists():
+        return []
+    return yaml.safe_load(TREE_FILE.read_text()) or []
+
+
+def save(tree: list) -> None:
+    TREE_FILE.write_text(
+        yaml.dump(tree, default_flow_style=False, sort_keys=False, allow_unicode=True)
+    )
+
+
+# ── Tree helpers ──────────────────────────────────────────────────────────────
+
+
+def flatten(nodes: list, parent: str | None = None, depth: int = 0, out: dict | None = None) -> dict:
+    """slug → (node_dict, parent_slug, depth)"""
+    if out is None:
+        out = {}
+    for node in nodes:
+        slug = node.get("slug", "")
+        out[slug] = (node, parent, depth)
+        flatten(node.get("children") or [], slug, depth + 1, out)
+    return out
+
+
+def find(nodes: list, slug: str):
+    """Return (node, sibling_list) or None."""
+    for node in nodes:
+        if node["slug"] == slug:
+            return node, nodes
+        result = find(node.get("children") or [], slug)
+        if result:
+            return result
+    return None
+
+
+def is_domain(slug: str, flat: dict) -> bool:
+    _, parent, _ = flat.get(slug, (None, None, None))
+    return parent is None
+
+
+# ── Validation ────────────────────────────────────────────────────────────────
+
+
+def _validate(nodes: list, parent_slug: str | None, depth: int, seen: set, errors: list) -> None:
+    for node in nodes:
+        slug = node.get("slug", "")
+
+        for field in ("slug", "title", "description", "status", "priority"):
+            if field not in node:
+                errors.append(f"'{slug or '?'}' is missing required field '{field}'")
+
+        if slug:
+            if not SLUG_RE.match(slug):
+                errors.append(
+                    f"Invalid slug '{slug}' — lowercase letters, underscores within a level, dots between levels"
+                )
+            if slug in seen:
+                errors.append(f"Duplicate slug '{slug}'")
+            else:
+                seen.add(slug)
+            if parent_slug and not slug.startswith(parent_slug + "."):
+                errors.append(
+                    f"Slug '{slug}' must start with parent prefix '{parent_slug}.' "
+                    f"(e.g. '{parent_slug}.{slug.split('.')[-1]}')"
+                )
+
+        status = node.get("status", "")
+        if status and status not in VALID_STATUSES:
+            errors.append(
+                f"'{slug}' has invalid status '{status}' — valid: {' | '.join(sorted(VALID_STATUSES))}"
+            )
+
+        priority = node.get("priority", "")
+        if priority and priority not in VALID_PRIORITIES:
+            errors.append(f"'{slug}' has invalid priority '{priority}' — valid: P0 | P1 | P2")
+
+        stories = node.get("stories")
+        if stories is not None:
+            if not isinstance(stories, list):
+                errors.append(f"'{slug}' stories must be a list")
+            elif not all(isinstance(s, str) for s in stories):
+                errors.append(f"'{slug}' stories must be a list of strings")
+
+        children = node.get("children") or []
+        if children and depth + 1 >= MAX_DEPTH:
+            errors.append(
+                f"'{slug}' is at max depth — features cannot have children, split into multiple features instead"
+            )
+        else:
+            _validate(children, slug, depth + 1, seen, errors)
+
+
+def validate_tree(tree: list) -> list[str]:
+    errors: list[str] = []
+    _validate(tree, None, 0, set(), errors)
+    return errors
+
+
+def require_valid(tree: list) -> None:
+    errors = validate_tree(tree)
+    if errors:
+        for e in errors:
+            click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+
+# ── Commands ──────────────────────────────────────────────────────────────────
+
+
+@click.group()
+def cli() -> None:
+    """flow — Hector design tree manager."""
+
+
+@cli.command()
+def validate() -> None:
+    """Validate tree.yaml and exit non-zero on errors."""
+    tree = load()
+    errors = validate_tree(tree)
+    if errors:
+        for e in errors:
+            click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    click.echo("OK")
+
+
+@cli.command()
+def scan() -> None:
+    """Show all open questions sorted by priority."""
+    tree = load()
+    require_valid(tree)
+
+    flat = flatten(tree)
+    nodes_with_questions = [
+        node for node, _, _ in flat.values() if node.get("open_questions")
+    ]
+    nodes_with_questions.sort(key=lambda n: PRIORITY_ORDER.get(n.get("priority", "P2"), 2))
+
+    if not nodes_with_questions:
+        click.echo("No open questions.")
+        return
+
+    for node in nodes_with_questions:
+        click.echo(f"\n[{node['priority']}] {node['slug']} — {node['title']}")
+        for i, q in enumerate(node["open_questions"]):
+            click.echo(f"  [{i}] {q}")
+
+
+@cli.command()
+@click.argument("parent_slug")
+@click.argument("slug")
+@click.argument("title")
+@click.argument("description")
+@click.option("--status", default="idea", show_default=True)
+@click.option("--priority", default="P1", show_default=True)
+def add(parent_slug: str, slug: str, title: str, description: str, status: str, priority: str) -> None:
+    """Add a node. Use '.' as parent_slug to add a domain at root."""
+    errors = []
+
+    if not SLUG_RE.match(slug):
+        errors.append(f"Invalid slug format '{slug}'")
+    if status not in VALID_STATUSES:
+        errors.append(f"Invalid status '{status}' — valid: {' | '.join(sorted(VALID_STATUSES))}")
+    if priority not in VALID_PRIORITIES:
+        errors.append(f"Invalid priority '{priority}' — valid: P0 | P1 | P2")
+
+    tree = load()
+    flat = flatten(tree)
+
+    if slug in flat:
+        errors.append(f"Slug '{slug}' already exists")
+
+    if parent_slug != ".":
+        if parent_slug not in flat:
+            errors.append(f"Parent domain '{parent_slug}' not found")
+        else:
+            _, _, parent_depth = flat[parent_slug]
+            if parent_depth + 1 >= MAX_DEPTH:
+                errors.append(
+                    f"'{parent_slug}' is a feature — cannot add children, split into multiple features instead"
+                )
+            if not slug.startswith(parent_slug + "."):
+                errors.append(
+                    f"Slug '{slug}' must be prefixed with parent '{parent_slug}' "
+                    f"(e.g. '{parent_slug}.{slug}')"
+                )
+
+    if errors:
+        for e in errors:
+            click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    new_node = {
+        "slug": slug,
+        "title": title,
+        "description": description,
+        "status": status,
+        "priority": priority,
+        "stories": [],
+        "open_questions": [],
+        "children": [],
+    }
+
+    if parent_slug == ".":
+        # Domains don't have stories
+        del new_node["stories"]
+        tree.append(new_node)
+    else:
+        parent_node, _ = find(tree, parent_slug)
+        if not parent_node.get("children"):
+            parent_node["children"] = []
+        parent_node["children"].append(new_node)
+
+    save(tree)
+    click.echo(f"Added '{slug}'")
+
+
+@cli.command()
+@click.argument("slug")
+@click.argument("story")
+def story(slug: str, story: str) -> None:
+    """Add a story to a feature."""
+    tree = load()
+    require_valid(tree)
+
+    flat = flatten(tree)
+    if slug not in flat:
+        click.echo(f"Error: slug '{slug}' not found", err=True)
+        sys.exit(1)
+
+    _, _, depth = flat[slug]
+    if depth == 0:
+        click.echo(f"Error: '{slug}' is a domain — stories belong on features, not domains", err=True)
+        sys.exit(1)
+
+    node, _ = find(tree, slug)
+    if not node.get("stories"):
+        node["stories"] = []
+    node["stories"].append(story)
+    save(tree)
+    click.echo(f"Added story [{len(node['stories']) - 1}] to '{slug}'")
+
+
+@cli.command()
+@click.argument("slug")
+@click.argument("question")
+def ask(slug: str, question: str) -> None:
+    """Add an open question to a node."""
+    tree = load()
+    require_valid(tree)
+
+    result = find(tree, slug)
+    if not result:
+        click.echo(f"Error: slug '{slug}' not found", err=True)
+        sys.exit(1)
+
+    node, _ = result
+    if not node.get("open_questions"):
+        node["open_questions"] = []
+    node["open_questions"].append(question)
+    save(tree)
+    click.echo(f"Added question [{len(node['open_questions']) - 1}] to '{slug}'")
+
+
+@cli.command()
+@click.argument("slug")
+@click.argument("index", type=int)
+def answer(slug: str, index: int) -> None:
+    """Remove a resolved question by index."""
+    tree = load()
+    require_valid(tree)
+
+    result = find(tree, slug)
+    if not result:
+        click.echo(f"Error: slug '{slug}' not found", err=True)
+        sys.exit(1)
+
+    node, _ = result
+    questions = node.get("open_questions") or []
+    if index < 0 or index >= len(questions):
+        click.echo(
+            f"Error: index {index} out of range — '{slug}' has {len(questions)} question(s)",
+            err=True,
+        )
+        sys.exit(1)
+
+    removed = questions.pop(index)
+    node["open_questions"] = questions
+    save(tree)
+    click.echo(f"Resolved: {removed}")
+
+
+@cli.command()
+@click.argument("slug")
+@click.argument("new_status")
+def status(slug: str, new_status: str) -> None:
+    """Update a node's status."""
+    if new_status not in VALID_STATUSES:
+        click.echo(
+            f"Error: invalid status '{new_status}' — valid: {' | '.join(sorted(VALID_STATUSES))}",
+            err=True,
+        )
+        sys.exit(1)
+
+    tree = load()
+    require_valid(tree)
+
+    result = find(tree, slug)
+    if not result:
+        click.echo(f"Error: slug '{slug}' not found", err=True)
+        sys.exit(1)
+
+    node, _ = result
+    old = node["status"]
+    node["status"] = new_status
+    save(tree)
+    click.echo(f"'{slug}': {old} → {new_status}")
+
+
+@cli.command()
+@click.argument("slug")
+def feature(slug: str) -> None:
+    """Show node details and linked file status."""
+    tree = load()
+    require_valid(tree)
+
+    flat = flatten(tree)
+    if slug not in flat:
+        click.echo(f"Error: slug '{slug}' not found", err=True)
+        sys.exit(1)
+
+    node, _, depth = flat[slug]
+
+    def file_status(rel: str) -> str:
+        return "✓" if (ROOT / rel).exists() else "✗"
+
+    click.echo(f"slug:      {node['slug']}")
+    click.echo(f"title:     {node['title']}")
+    click.echo(f"status:    {node['status']}")
+    click.echo(f"priority:  {node['priority']}")
+
+    if depth == 0:
+        click.echo(f"\n(domain — {len(node.get('children') or [])} features)")
+    else:
+        click.echo("")
+        click.echo(f"prd:       features/{slug}.md    {file_status(f'features/{slug}.md')}")
+        click.echo(f"design:    designs/{slug}.md     {file_status(f'designs/{slug}.md')}")
+        click.echo(f"research:  research/{slug}.md    {file_status(f'research/{slug}.md')}")
+
+        slices_dir = ROOT / "slices"
+        slices = sorted(slices_dir.glob(f"{slug}*.md")) if slices_dir.exists() else []
+        click.echo("slices:    " + (", ".join(s.name for s in slices) if slices else "none"))
+
+        stories = node.get("stories") or []
+        if stories:
+            click.echo("\nstories:")
+            for i, s in enumerate(stories):
+                click.echo(f"  [{i}] {s}")
+        else:
+            click.echo("\nstories:   none")
+
+    questions = node.get("open_questions") or []
+    if questions:
+        click.echo("\nopen questions:")
+        for i, q in enumerate(questions):
+            click.echo(f"  [{i}] {q}")
+    else:
+        click.echo("\nopen questions: none")
+
+
+if __name__ == "__main__":
+    cli()
