@@ -399,5 +399,40 @@ def feature(slug: str) -> None:
         click.echo("\nopen questions: none")
 
 
+@cli.command("list")
+@click.option("--status", default="idea", show_default=True, help="Filter by status")
+@click.option("--domain", default=None, help="Filter by domain slug")
+@click.option("--limit", default=10, show_default=True, help="Max results")
+@click.option("--blocked", is_flag=True, default=False, help="Include features with open questions")
+def list_features(status: str, domain: str | None, limit: int, blocked: bool) -> None:
+    """List features sorted by priority."""
+    if status not in VALID_STATUSES:
+        click.echo(f"Error: invalid status '{status}' — valid: {' | '.join(sorted(VALID_STATUSES))}", err=True)
+        sys.exit(1)
+
+    tree = load()
+    require_valid(tree)
+
+    flat = flatten(tree)
+    features = [
+        node for node, parent, depth in flat.values()
+        if depth == 1
+        and node.get("status") == status
+        and (domain is None or parent == domain)
+        and (blocked or not node.get("open_questions"))
+    ]
+    features.sort(key=lambda n: PRIORITY_ORDER.get(n.get("priority", "P2"), 2))
+    features = features[:limit]
+
+    if not features:
+        click.echo("No features found.")
+        return
+
+    for node in features:
+        questions = node.get("open_questions") or []
+        blocked_marker = f"  [{len(questions)} questions]" if questions else ""
+        click.echo(f"{node['priority']}  {node['slug']:<45} {node['title']}{blocked_marker}")
+
+
 if __name__ == "__main__":
     cli()
