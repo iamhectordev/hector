@@ -5,11 +5,14 @@ If a pattern you need is missing, design it with the user before building.
 
 ## CLI command
 
-Adding a subcommand to the Hector CLI using urfave/cli v3.
-- Commands live in `internal/cli/`
-- Each command is a `func(ctx context.Context, cmd *cli.Command) error`
-- `main` only inits context, logger, tracer — then calls `cli.NewApp().Run(ctx, os.Args)`
-- Example: _not yet defined_
+Adding a subcommand to the Hector CLI. Uses klee (wraps urfave/cli v3).
+
+- Commands live in `internal/cli/`, registered in `Commands()` in `commands.go`
+- Split into a constructor (`fooCommand() *cli.Command`) and an action (`fooAction(ctx, cmd) error`)
+- Flags declared in the constructor's `Flags` field
+- Access config via `klee.Config[T](ctx)`, global flags via `klee.GetRunFlags(ctx)`
+- Return errors bare — error kind conventions to be defined
+- Example: `internal/cli/chat.go`
 
 ## Config field
 
