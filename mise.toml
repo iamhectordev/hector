@@ -7,7 +7,7 @@ go = "1.26"
 run = "go build -o bin/hector ./cmd/hector"
 
 [tasks.test]
-run = "go test ./..."
+run = "go test -race ./..."
 
 [tasks.lint]
 run = ["golangci-lint run", "nilaway ./..."]
