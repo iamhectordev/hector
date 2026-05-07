@@ -2,7 +2,7 @@ Design and create a slice for the current feature.
 The feature must already be picked and confirmed by the user.
 
 1. **Read context**
-   Read `docs/golden-paths.md`, `docs/architecture.md`, and the feature node via `./plan/flow feature <slug>`.
+   Read `docs/golden-paths.md`, `docs/architecture.md`, and the feature node via `./flow/flow feature <slug>`.
 
 2. **Think**
    Reason through the design openly:
@@ -43,6 +43,6 @@ The feature must already be picked and confirmed by the user.
    ```
 
 5. **Create the slice file** once the user confirms.
-   Write to `plan/slices/<feature-slug>.md`.
-   Run `./plan/flow status <feature-slug> designing`.
+   Write to `flow/slices/<feature-slug>.md`.
+   Run `./flow/flow status <feature-slug> designing`.
    Commit: `feat(<domain>): slice <feature-slug>`
