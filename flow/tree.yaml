@@ -314,6 +314,17 @@
   priority: P1
   open_questions: []
   children:
+    - slug: integrations.slack
+      title: Slack
+      description: Full-fidelity Slack integration — messages, reactions, threads, voice, images
+      status: idea
+      priority: P1
+      stories:
+        - Hector reads Slack messages with full fidelity — reactions, reply counts, edits, attachments
+        - Hector transcribes voice messages and passes images to the model
+        - Hector can post messages, reply in threads, and react
+      open_questions: []
+      children: []
     - slug: integrations.github
       title: GitHub
       description: GitHub integration — PRs, comments, issues, reviews
