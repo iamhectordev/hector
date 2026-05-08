@@ -57,7 +57,11 @@ func WithSignalChan(ch <-chan os.Signal) Option {
 // WithLogger enables lifecycle logging via [slog].
 func WithLogger(l *slog.Logger) Option {
 	return func(c *config) error {
-		c.logger = l
+		if l == nil {
+			c.logger = nil
+			return nil
+		}
+		c.logger = l.With("component", "supervisor")
 		return nil
 	}
 }

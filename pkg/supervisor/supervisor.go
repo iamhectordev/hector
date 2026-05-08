@@ -54,7 +54,6 @@ type firstResult struct {
 //
 // The shared context passed to [Module.Start] is canceled before [Module.Stop] runs.
 func (s *Supervisor) Run(ctx context.Context) Report {
-	log := s.cfg.logger
 	if s.cfg.signalHandling {
 		var stop context.CancelFunc
 		ctx, stop = NotifyContext(ctx, s.cfg.signals...)
@@ -71,10 +70,10 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 	}
 
 	first := s.waitFirstTerminal(ctx, s.signalPipe(), events)
-	if log != nil {
-		log.InfoContext(ctx, "supervisor: shutdown",
+	if log := s.log(ctx); log != nil {
+		log.InfoContext(ctx, "shutdown",
 			slog.Any("reason", first.reason),
-			slog.String("module", first.name),
+			slog.String("trigger_module", first.name),
 			slog.Any("err", first.err),
 			slog.Any("signal", first.sig),
 		)
@@ -88,14 +87,14 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 	dur := time.Since(t0)
 
 	rep := buildReport(first, preStopErrs, stopErrs, postStopErrs, dur)
-	if log != nil {
+	if log := s.log(ctx); log != nil {
 		if len(rep.PreStopErrors) > 0 || len(rep.StopErrors) > 0 || len(rep.PostStopErrors) > 0 {
-			log.ErrorContext(ctx, "supervisor: stop completed with errors",
+			log.ErrorContext(ctx, "stop completed with errors",
 				slog.Any("pre_stop_errors", rep.PreStopErrors),
 				slog.Any("stop_errors", rep.StopErrors),
 				slog.Any("post_stop_errors", rep.PostStopErrors))
 		} else {
-			log.InfoContext(ctx, "supervisor: stop completed",
+			log.InfoContext(ctx, "stop completed",
 				slog.Duration("shutdown_duration", rep.ShutdownDuration))
 		}
 	}
@@ -241,4 +240,8 @@ func (s *Supervisor) signalPipe() <-chan os.Signal {
 		return s.cfg.signalChan
 	}
 	return nil
+}
+
+func (s *Supervisor) log(context.Context) *slog.Logger {
+	return s.cfg.logger
 }

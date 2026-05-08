@@ -25,7 +25,7 @@ func NewModule(bus *waffle.EventBus, in io.Reader) *Module {
 	return &Module{
 		bus:    bus,
 		in:     in,
-		logger: slog.Default().With("module", "tui"),
+		logger: slog.Default().With("component", "module", "module", "tui"),
 	}
 }
 
@@ -35,10 +35,10 @@ func (m *Module) Name() string {
 
 // Start runs the input loop until ctx is cancelled.
 func (m *Module) Start(ctx context.Context) error {
-	m.logger.InfoContext(ctx, "tui input loop starting")
+	m.log(ctx).InfoContext(ctx, "tui input loop starting")
 	go m.inputLoop(ctx)
 	<-ctx.Done()
-	m.logger.InfoContext(ctx, "tui module stopping", "cause", context.Cause(ctx))
+	m.log(ctx).InfoContext(ctx, "tui module stopping", "cause", context.Cause(ctx))
 	return nil
 }
 
@@ -51,11 +51,15 @@ func (m *Module) inputLoop(ctx context.Context) {
 	for scanner.Scan() {
 		text := scanner.Text()
 		if err := m.bus.Record(ctx, MessageReceived.New(MessageReceivedData{Text: text})); err != nil {
-			m.logger.ErrorContext(ctx, "failed to record tui message", "err", err)
+			m.log(ctx).ErrorContext(ctx, "failed to record tui message", "err", err)
 			return
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		m.logger.ErrorContext(ctx, "tui input scanner failed", "err", err)
+		m.log(ctx).ErrorContext(ctx, "tui input scanner failed", "err", err)
 	}
+}
+
+func (m *Module) log(context.Context) *slog.Logger {
+	return m.logger
 }

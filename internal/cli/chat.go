@@ -23,7 +23,10 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	logger := slog.Default().With("command", "chat")
 	logger.InfoContext(ctx, "starting chat command")
 
-	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(2),
+		waffle.WithLogger(logger),
+	)
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
 		return err
@@ -33,6 +36,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 		agent.NewModule(bus, nil),
 		tui.NewModule(bus, nil),
 	},
+		supervisor.WithLogger(logger),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
 		supervisor.WithPostStopHook("bus.shutdown", bus.Shutdown),
 	)

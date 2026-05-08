@@ -8,6 +8,11 @@ Structured `slog` logs with tags only.
 - Keep messages short
 - Do not log secrets or raw user content
 
+Boundary:
+- App/runtime code can use app logging helpers (for example context logger helpers)
+- Contained libraries/packages must not depend on app-specific logging packages
+- Contained packages use `log/slog` only and accept logger injection via options
+
 Levels:
 - `debug` diagnostics
 - `info` normal lifecycle

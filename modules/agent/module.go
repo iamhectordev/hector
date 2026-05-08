@@ -24,7 +24,7 @@ func NewModule(bus *waffle.EventBus, proc *processor.Processor) *Module {
 	return &Module{
 		bus:       bus,
 		processor: proc,
-		logger:    slog.Default().With("module", "agent"),
+		logger:    slog.Default().With("component", "module", "module", "agent"),
 	}
 }
 
@@ -35,15 +35,19 @@ func (m *Module) Name() string {
 // Start registers listeners and blocks until ctx is cancelled.
 func (m *Module) Start(ctx context.Context) error {
 	if err := waffle.On(m.bus, tui.MessageReceived).Handle("agent.tui", m.onTUIMessage); err != nil {
-		m.logger.ErrorContext(ctx, "failed to register tui listener", "err", err)
+		m.log(ctx).ErrorContext(ctx, "failed to register tui listener", "err", err)
 		return err
 	}
-	m.logger.InfoContext(ctx, "agent listeners registered")
+	m.log(ctx).InfoContext(ctx, "agent listeners registered")
 	<-ctx.Done()
-	m.logger.InfoContext(ctx, "agent module stopping", "cause", context.Cause(ctx))
+	m.log(ctx).InfoContext(ctx, "agent module stopping", "cause", context.Cause(ctx))
 	return nil
 }
 
 func (m *Module) Stop(context.Context) error {
 	return nil
+}
+
+func (m *Module) log(context.Context) *slog.Logger {
+	return m.logger
 }
