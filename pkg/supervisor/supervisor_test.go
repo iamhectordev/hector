@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"runtime"
-	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -398,14 +396,11 @@ func TestReport_Err_ContextCanceledIncludesCause(t *testing.T) {
 
 func TestNotifyContext_StopRaceDoesNotLoseSignalCause(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		t.Skip("uses SIGUSR1")
-	}
-
 	for i := 0; i < 200; i++ {
-		ctx, stop := supervisor.NotifyContext(context.Background(), syscall.SIGUSR1)
+		sig := notifyTestSignal()
+		ctx, stop := supervisor.NotifyContext(context.Background(), sig)
 
-		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGUSR1))
+		require.NoError(t, sendNotifyTestSignal())
 		<-ctx.Done()
 
 		stopDone := make(chan struct{})
