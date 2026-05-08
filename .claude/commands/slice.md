@@ -2,7 +2,7 @@ Design and create a slice for the current feature.
 The feature must already be picked and confirmed by the user.
 
 1. **Read context**
-   Read `docs/golden-paths.md`, `docs/architecture.md`, and the feature node via `./flow/flow feature <slug>`.
+   Read files in `flow/paths/`, `docs/architecture.md`, and the feature node via `./flow/flow feature <slug>`.
 
 2. **Think**
    Reason through the design openly:
@@ -13,10 +13,10 @@ The feature must already be picked and confirmed by the user.
    - What could go wrong or be missed
 
 3. **Check golden paths**
-   For each golden path needed, check if it exists in `docs/golden-paths.md`.
+   For each golden path needed, check if it exists in `flow/paths/`.
    List them:
-   - [path name](../docs/golden-paths.md#anchor) ✓
-   - [path name](../docs/golden-paths.md#anchor) ✗ — missing
+   - [path name](../flow/paths/<name>.md) ✓
+   - [path name](../flow/paths/<name>.md) ✗ — missing
 
    If any are missing: run `/design-path` for each before continuing.
 
@@ -31,8 +31,8 @@ The feature must already be picked and confirmed by the user.
    <reasoning>
 
    ### Golden paths
-   - [cli-command](../docs/golden-paths.md#cli-command) ✓
-   - [db-migration](../docs/golden-paths.md#db-migration) ✗
+   - [cli-command](../flow/paths/cli.md) ✓
+   - [db-migration](../flow/paths/db-migration.md) ✗
 
    ### What it does
    ### Boundaries
