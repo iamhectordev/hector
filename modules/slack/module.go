@@ -16,16 +16,31 @@ type Module struct {
 	bus      *waffle.EventBus
 	appToken string
 	botToken string
+	apiURL   string
 	logger   *slog.Logger
 }
 
-func NewModule(bus *waffle.EventBus, appToken, botToken string) *Module {
-	return &Module{
+type Option func(*Module)
+
+func WithAPIURL(apiURL string) Option {
+	return func(m *Module) {
+		m.apiURL = apiURL
+	}
+}
+
+func NewModule(bus *waffle.EventBus, appToken, botToken string, opts ...Option) *Module {
+	m := &Module{
 		bus:      bus,
 		appToken: appToken,
 		botToken: botToken,
 		logger:   slog.Default().With("component", "module", "module", "slack"),
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(m)
+		}
+	}
+	return m
 }
 
 func (m *Module) Name() string {
@@ -33,10 +48,13 @@ func (m *Module) Name() string {
 }
 
 func (m *Module) Start(ctx context.Context) error {
-	api := slackgo.New(
-		m.botToken,
+	options := []slackgo.Option{
 		slackgo.OptionAppLevelToken(m.appToken),
-	)
+	}
+	if m.apiURL != "" {
+		options = append(options, slackgo.OptionAPIURL(m.apiURL))
+	}
+	api := slackgo.New(m.botToken, options...)
 
 	auth, err := api.AuthTestContext(ctx)
 	if err != nil {

@@ -4,6 +4,15 @@ import "encoding/json"
 
 // DMMessage builds a Socket Mode events_api payload for a direct message.
 func DMMessage(userID, channelID, text string) json.RawMessage {
+	return message(userID, channelID, text, "im")
+}
+
+// ChannelMessage builds a Socket Mode events_api payload for a channel message.
+func ChannelMessage(userID, channelID, text string) json.RawMessage {
+	return message(userID, channelID, text, "channel")
+}
+
+func message(userID, channelID, text, channelType string) json.RawMessage {
 	payload := map[string]any{
 		"token":      "verification-token",
 		"team_id":    "T111",
@@ -13,7 +22,7 @@ func DMMessage(userID, channelID, text string) json.RawMessage {
 			"text":         text,
 			"user":         userID,
 			"channel":      channelID,
-			"channel_type": "im",
+			"channel_type": channelType,
 			"ts":           "1610241741.000200",
 			"event_ts":     "1610241741.000200",
 		},
