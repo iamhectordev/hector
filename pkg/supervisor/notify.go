@@ -8,8 +8,6 @@ import (
 	"sync"
 )
 
-type notifyContextKey struct{}
-
 // SignalCause is used as a context cancel cause when shutdown was triggered by an OS signal.
 type SignalCause struct {
 	Signal os.Signal
@@ -35,8 +33,7 @@ func NotifyContext(parent context.Context, signals ...os.Signal) (context.Contex
 		signals = DefaultSignals()
 	}
 
-	base := context.WithValue(parent, notifyContextKey{}, true)
-	ctx, cancelCause := context.WithCancelCause(base)
+	ctx, cancelCause := context.WithCancelCause(parent)
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, signals...)
@@ -63,11 +60,6 @@ func NotifyContext(parent context.Context, signals ...os.Signal) (context.Contex
 	}()
 
 	return ctx, stop
-}
-
-func hasNotifyContext(ctx context.Context) bool {
-	v, _ := ctx.Value(notifyContextKey{}).(bool)
-	return v
 }
 
 func signalFromCause(err error) (os.Signal, bool) {

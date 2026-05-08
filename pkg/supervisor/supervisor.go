@@ -53,15 +53,15 @@ type firstResult struct {
 // Run blocks until a shutdown trigger occurs, then stops all modules.
 //
 // The shared context passed to [Module.Start] is canceled before [Module.Stop] runs.
-func (s *Supervisor) Run(parent context.Context) Report {
+func (s *Supervisor) Run(ctx context.Context) Report {
 	log := s.cfg.logger
-	if s.cfg.signalHandling && !hasNotifyContext(parent) {
+	if s.cfg.signalHandling {
 		var stop context.CancelFunc
-		parent, stop = NotifyContext(parent, s.cfg.signals...)
+		ctx, stop = NotifyContext(ctx, s.cfg.signals...)
 		defer stop()
 	}
 
-	runCtx, cancelRun := context.WithCancel(parent)
+	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 
 	events := make(chan modEvent, len(s.modules)+1)
@@ -70,9 +70,9 @@ func (s *Supervisor) Run(parent context.Context) Report {
 		go s.runModule(m, runCtx, events)
 	}
 
-	first := s.waitFirstTerminal(parent, s.signalPipe(), events)
+	first := s.waitFirstTerminal(ctx, s.signalPipe(), events)
 	if log != nil {
-		log.InfoContext(parent, "supervisor: shutdown",
+		log.InfoContext(ctx, "supervisor: shutdown",
 			slog.Any("reason", first.reason),
 			slog.String("module", first.name),
 			slog.Any("err", first.err),
@@ -82,20 +82,20 @@ func (s *Supervisor) Run(parent context.Context) Report {
 
 	cancelRun()
 	t0 := time.Now()
-	preStopErrs := s.runHooks(s.cfg.preStopHooks)
-	stopErrs := s.stopAll()
-	postStopErrs := s.runHooks(s.cfg.postStopHooks)
+	preStopErrs := s.runHooks(ctx, s.cfg.preStopHooks)
+	stopErrs := s.stopAll(ctx)
+	postStopErrs := s.runHooks(ctx, s.cfg.postStopHooks)
 	dur := time.Since(t0)
 
 	rep := buildReport(first, preStopErrs, stopErrs, postStopErrs, dur)
 	if log != nil {
 		if len(rep.PreStopErrors) > 0 || len(rep.StopErrors) > 0 || len(rep.PostStopErrors) > 0 {
-			log.ErrorContext(parent, "supervisor: stop completed with errors",
+			log.ErrorContext(ctx, "supervisor: stop completed with errors",
 				slog.Any("pre_stop_errors", rep.PreStopErrors),
 				slog.Any("stop_errors", rep.StopErrors),
 				slog.Any("post_stop_errors", rep.PostStopErrors))
 		} else {
-			log.InfoContext(parent, "supervisor: stop completed",
+			log.InfoContext(ctx, "supervisor: stop completed",
 				slog.Duration("shutdown_duration", rep.ShutdownDuration))
 		}
 	}
@@ -121,19 +121,19 @@ func (s *Supervisor) runModule(mod Module, runCtx context.Context, events chan<-
 }
 
 func (s *Supervisor) waitFirstTerminal(
-	parent context.Context,
+	ctx context.Context,
 	sigCh <-chan os.Signal,
 	events <-chan modEvent,
 ) firstResult {
 	for {
 		select {
-		case <-parent.Done():
-			cause := context.Cause(parent)
+		case <-ctx.Done():
+			cause := context.Cause(ctx)
 			if sig, ok := signalFromCause(cause); ok {
 				return firstResult{reason: ReasonSignal, sig: sig, err: cause}
 			}
 			if cause == nil {
-				cause = parent.Err()
+				cause = ctx.Err()
 			}
 			return firstResult{reason: ReasonContextCanceled, err: cause}
 		case sig := <-sigCh:
@@ -153,11 +153,11 @@ func modEventToFirst(ev modEvent) firstResult {
 	}
 }
 
-func (s *Supervisor) stopAll() map[string]error {
+func (s *Supervisor) stopAll(ctx context.Context) map[string]error {
 	errs := make(map[string]error)
 	for i := len(s.modules) - 1; i >= 0; i-- {
 		m := s.modules[i]
-		stopCtx, cancel := context.WithTimeout(context.Background(), s.cfg.stopTimeout)
+		stopCtx, cancel := s.newShutdownContext(ctx)
 		err := m.Stop(stopCtx)
 		deadlineExceeded := errors.Is(stopCtx.Err(), context.DeadlineExceeded)
 		cancel()
@@ -174,10 +174,10 @@ func (s *Supervisor) stopAll() map[string]error {
 	return errs
 }
 
-func (s *Supervisor) runHooks(hooks []ShutdownHook) map[string]error {
+func (s *Supervisor) runHooks(ctx context.Context, hooks []ShutdownHook) map[string]error {
 	errs := make(map[string]error)
 	for _, hook := range hooks {
-		hookCtx, cancel := context.WithTimeout(context.Background(), s.cfg.stopTimeout)
+		hookCtx, cancel := s.newShutdownContext(ctx)
 		err := runHook(hookCtx, hook)
 		deadlineExceeded := errors.Is(hookCtx.Err(), context.DeadlineExceeded)
 		cancel()
@@ -201,6 +201,16 @@ func runHook(ctx context.Context, hook ShutdownHook) (err error) {
 		}
 	}()
 	return hook.Run(ctx)
+}
+
+// newShutdownContext creates the context used for shutdown work (hooks and module Stop).
+// The input context is accepted so future versions can propagate trace/link metadata,
+// while still deriving cancellation from a detached root to avoid skipped shutdown steps.
+func (s *Supervisor) newShutdownContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	_ = ctx
+	// Keep shutdown work decoupled from caller cancellation so hooks/stops still run.
+	// Future: enrich this context with trace/link information for shutdown spans.
+	return context.WithTimeout(context.Background(), s.cfg.stopTimeout)
 }
 
 func buildReport(first firstResult, preStopErrs, stopErrs, postStopErrs map[string]error, dur time.Duration) Report {
