@@ -28,6 +28,9 @@ type AnyEvent interface {
 
 	// OccurredAt returns when the event was created.
 	OccurredAt() time.Time
+
+	// Payload returns the producer-owned payload without its static type.
+	Payload() any
 }
 
 // Definition describes a concrete event type and payload schema version.
@@ -97,5 +100,9 @@ func (e event[T]) OccurredAt() time.Time {
 }
 
 func (e event[T]) Data() T {
+	return e.data
+}
+
+func (e event[T]) Payload() any {
 	return e.data
 }

@@ -31,3 +31,15 @@ func WithLogger(l *slog.Logger) Option {
 		return nil
 	}
 }
+
+// WithStore sets the event store used by Record.
+func WithStore(store Store) Option {
+	return func(bus *EventBus) error {
+		if store == nil {
+			return fmt.Errorf("waffle: store cannot be nil")
+		}
+
+		bus.store = store
+		return nil
+	}
+}

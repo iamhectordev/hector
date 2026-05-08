@@ -2,6 +2,7 @@ package waffle
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"sync"
@@ -23,10 +24,10 @@ type EventBus struct {
 	workers  int
 	workerWG conc.WaitGroup
 	logger   *slog.Logger
+	store    Store
 
 	closed   bool
 	jobs     chan job
-	events   []AnyEvent
 	handlers map[string][]registeredHandler
 	errs     []error
 }
@@ -35,6 +36,7 @@ type EventBus struct {
 func NewEventBus(options ...Option) (*EventBus, error) {
 	bus := &EventBus{
 		workers:  1,
+		store:    NewMemoryStore(),
 		handlers: make(map[string][]registeredHandler),
 	}
 
@@ -68,8 +70,22 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 		return ErrClosed
 	}
 
+	record, err := eventRecord(event)
+	if err != nil {
+		if log := b.log(ctx); log != nil {
+			log.ErrorContext(ctx, "record encoding failed", "event_type", event.Type(), "err", err)
+		}
+		return err
+	}
+
+	if err := b.store.Append(ctx, record); err != nil {
+		if log := b.log(ctx); log != nil {
+			log.ErrorContext(ctx, "record append failed", "event_type", event.Type(), "err", err)
+		}
+		return err
+	}
+
 	b.mu.Lock()
-	b.events = append(b.events, event)
 	handlers := append([]registeredHandler(nil), b.handlers[event.Type()]...)
 	b.mu.Unlock()
 
@@ -88,6 +104,30 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 	}
 
 	return nil
+}
+
+func eventRecord(event AnyEvent) (EventRecord, error) {
+	payload, err := eventPayload(event)
+	if err != nil {
+		return EventRecord{}, err
+	}
+
+	return EventRecord{
+		ID:            event.ID(),
+		Type:          event.Type(),
+		SchemaVersion: event.SchemaVersion(),
+		OccurredAt:    event.OccurredAt(),
+		Payload:       payload,
+	}, nil
+}
+
+func eventPayload(event AnyEvent) ([]byte, error) {
+	payload, err := json.Marshal(event.Payload())
+	if err != nil {
+		return nil, err
+	}
+
+	return payload, nil
 }
 
 // Drain waits until all queued and running handlers finish.

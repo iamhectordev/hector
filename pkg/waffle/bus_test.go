@@ -182,3 +182,39 @@ func TestShutdownRejectsRecord(t *testing.T) {
 
 	require.ErrorIs(t, bus.Record(ctx, def.New(testMessage{})), waffle.ErrClosed)
 }
+
+func TestRecordAppendsToStore(t *testing.T) {
+	ctx := t.Context()
+	store := waffle.NewMemoryStore()
+	bus, err := waffle.NewEventBus(waffle.WithStore(store))
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
+
+	require.NoError(t, bus.Record(ctx, def.New(testMessage{Text: "hello"})))
+
+	events := store.Events()
+	require.Len(t, events, 1)
+	require.Equal(t, "test.message_received", events[0].Type)
+	require.Equal(t, 1, events[0].SchemaVersion)
+	require.JSONEq(t, `{"Text":"hello"}`, string(events[0].Payload))
+}
+
+func TestRecordReturnsStoreErrors(t *testing.T) {
+	ctx := t.Context()
+	storeErr := errors.New("store failed")
+	bus, err := waffle.NewEventBus(waffle.WithStore(failingStore{err: storeErr}))
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, bus.Record(ctx, def.New(testMessage{})), storeErr)
+}
+
+type failingStore struct {
+	err error
+}
+
+func (s failingStore) Append(context.Context, waffle.EventRecord) error {
+	return s.err
+}
