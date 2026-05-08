@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/iamhectordev/hector/pkg/waffle"
+	moderncsqlite "modernc.org/sqlite"
+	sqlitelib "modernc.org/sqlite/lib"
 )
 
 // ErrDuplicateID is returned when an event with the same id already exists.
@@ -43,6 +44,16 @@ VALUES (?, ?, ?, ?, ?)
 }
 
 func isUniqueConstraint(err error) bool {
-	msg := err.Error()
-	return strings.Contains(msg, "UNIQUE constraint failed") || strings.Contains(msg, "constraint failed")
+	var sqliteErr *moderncsqlite.Error
+	if !errors.As(err, &sqliteErr) {
+		return false
+	}
+
+	switch sqliteErr.Code() {
+	case sqlitelib.SQLITE_CONSTRAINT_PRIMARYKEY,
+		sqlitelib.SQLITE_CONSTRAINT_UNIQUE:
+		return true
+	default:
+		return false
+	}
 }
