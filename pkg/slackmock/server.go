@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,9 +17,9 @@ var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { retu
 // Server is a fake Slack Socket Mode server for use in tests.
 type Server struct {
 	baseURL   string
-	mu        sync.Mutex
 	conn      *websocket.Conn
 	connected chan struct{}
+	seq       atomic.Uint64
 }
 
 // New starts a fake Slack server on a random port and registers cleanup with t.
@@ -63,11 +62,9 @@ func (s *Server) Push(ctx context.Context, payload json.RawMessage) error {
 		return fmt.Errorf("slackmock: no client connected: %w", ctx.Err())
 	}
 
-	s.mu.Lock()
-	conn := s.conn
-	s.mu.Unlock()
+	conn := s.conn // safe: conn is written before connected is closed
 
-	envelopeID := "test-envelope-1"
+	envelopeID := fmt.Sprintf("env-%d", s.seq.Add(1))
 	env := map[string]any{
 		"envelope_id":              envelopeID,
 		"type":                     "events_api",
@@ -103,8 +100,6 @@ func (s *Server) Push(ctx context.Context, payload json.RawMessage) error {
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-time.After(5 * time.Second):
-		return fmt.Errorf("slackmock: ack timeout")
 	}
 }
 
@@ -135,9 +130,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.mu.Lock()
 	s.conn = conn
-	s.mu.Unlock()
 
 	// send hello before signaling readiness so Push never races with this write
 	conn.WriteJSON(map[string]any{ //nolint:errcheck
