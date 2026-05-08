@@ -5,23 +5,29 @@ Waffle is a tiny in-memory event runtime for typed Go events.
 Producers define event names, schema versions, and payload structs. Consumers register typed handlers and decide what an event means for them.
 
 ```go
-var SlackMessageReceived = waffle.Define[SlackMessageReceivedData](
-	"gateway.slack_message_received",
-	1,
-)
+messageReceived, err := waffle.Define[MessageReceivedData]("tui.message_received", 1)
+if err != nil {
+	return err
+}
 
-type SlackMessageReceivedData struct {
+type MessageReceivedData struct {
 	MessageID string `json:"message_id"`
 	Text      string `json:"text"`
 }
 
-bus := waffle.NewEventBus(waffle.WithWorkers(4))
+bus, err := waffle.NewEventBus(waffle.WithWorkers(4))
+if err != nil {
+	return err
+}
 
-waffle.On(bus, SlackMessageReceived).Handle("agent.reply", func(ctx context.Context, event waffle.Event[SlackMessageReceivedData]) error {
+err = waffle.On(bus, messageReceived).Handle("agent.reply", func(ctx context.Context, event waffle.Event[MessageReceivedData]) error {
 	return nil
 })
+if err != nil {
+	return err
+}
 
-err := bus.Record(ctx, SlackMessageReceived.New(SlackMessageReceivedData{
+err = bus.Record(ctx, messageReceived.New(MessageReceivedData{
 	MessageID: "msg_123",
 	Text:      "hello",
 }))

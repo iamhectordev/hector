@@ -12,13 +12,13 @@ Events describe something that happened. They are named in past tense and do not
 
 Good:
 
-- `SlackMessageReceived`
+- `MessageReceived`
 - `ToolCallCompleted`
 - `ApprovalGranted`
 
 Avoid:
 
-- `ProcessSlackMessage`
+- `ProcessMessage`
 - `SendReply`
 - `UpdateMemory`
 

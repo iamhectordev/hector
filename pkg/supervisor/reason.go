@@ -1,6 +1,8 @@
 package supervisor
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"time"
 )
@@ -30,6 +32,40 @@ type Report struct {
 
 	ShutdownDuration time.Duration
 
+	// PreStopErrors maps pre-stop hook name to failure.
+	PreStopErrors map[string]error
+
 	// StopErrors maps module name to stop failure (timeout or returned error).
 	StopErrors map[string]error
+
+	// PostStopErrors maps post-stop hook name to failure.
+	PostStopErrors map[string]error
+}
+
+// Err returns a non-nil error when the run failed or module shutdown failed.
+// Clean exits ([ReasonSignal] without stop errors) return nil.
+func (r Report) Err() error {
+	var errs []error
+	switch r.Reason {
+	case ReasonModuleError:
+		if r.Cause != nil {
+			errs = append(errs, r.Cause)
+		}
+	case ReasonContextCanceled:
+		if r.Cause != nil {
+			errs = append(errs, r.Cause)
+		}
+	case ReasonModulePanic:
+		errs = append(errs, fmt.Errorf("module %s panicked: %v", r.TriggerModule, r.PanicValue))
+	}
+	for name, err := range r.PreStopErrors {
+		errs = append(errs, fmt.Errorf("pre-stop hook %s: %w", name, err))
+	}
+	for name, err := range r.StopErrors {
+		errs = append(errs, fmt.Errorf("module %s: stop: %w", name, err))
+	}
+	for name, err := range r.PostStopErrors {
+		errs = append(errs, fmt.Errorf("post-stop hook %s: %w", name, err))
+	}
+	return errors.Join(errs...)
 }

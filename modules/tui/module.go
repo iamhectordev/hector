@@ -1,21 +1,61 @@
 package tui
 
-import "context"
+import (
+	"bufio"
+	"context"
+	"io"
+	"log/slog"
+	"os"
 
+	"github.com/iamhectordev/hector/pkg/waffle"
+)
+
+// Module reads interactive input and publishes messages on the waffle bus.
 type Module struct {
-	// hector: I think we need some instructions here that will allow input and output, just like in a tweet chat. So I'm thinking about something very initial and small that could, for example, receive chat messages over to it and return them. Now, I'm not quite sure if we want to do all the tweet manipulation, including rendering here, or do we want to keep it the CLI layer? Although this is a 2D model, so probably this needs a terminal, this needs a TTY. It would be best if we have something to want to see here and we'll do everything here, including the rendering and all. Although I do want some testable interface, if possible.
+	bus    *waffle.EventBus
+	in     io.Reader
+	logger *slog.Logger
 }
 
-func (Module) Name() string {
+// NewModule wires the TUI to bus. If in is nil, stdin is used.
+func NewModule(bus *waffle.EventBus, in io.Reader) *Module {
+	if in == nil {
+		in = os.Stdin
+	}
+	return &Module{
+		bus:    bus,
+		in:     in,
+		logger: slog.Default().With("module", "tui"),
+	}
+}
+
+func (m *Module) Name() string {
 	return "tui"
 }
 
-func (Module) Start(ctx context.Context) error {
+// Start runs the input loop until ctx is cancelled.
+func (m *Module) Start(ctx context.Context) error {
+	m.logger.InfoContext(ctx, "tui input loop starting")
+	go m.inputLoop(ctx)
+	<-ctx.Done()
+	m.logger.InfoContext(ctx, "tui module stopping", "cause", context.Cause(ctx))
 	return nil
 }
 
-func (Module) Stop(ctx context.Context) error {
+func (m *Module) Stop(context.Context) error {
 	return nil
 }
 
-// hector: We need start and stop just like any other module.
+func (m *Module) inputLoop(ctx context.Context) {
+	scanner := bufio.NewScanner(m.in)
+	for scanner.Scan() {
+		text := scanner.Text()
+		if err := m.bus.Record(ctx, MessageReceived.New(MessageReceivedData{Text: text})); err != nil {
+			m.logger.ErrorContext(ctx, "failed to record tui message", "err", err)
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		m.logger.ErrorContext(ctx, "tui input scanner failed", "err", err)
+	}
+}

@@ -2,22 +2,54 @@ package cli
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"errors"
+	"log/slog"
 
+	"github.com/iamhectordev/hector/modules/agent"
+	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/supervisor"
+	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/urfave/cli/v3"
 )
 
 func chatCommand() *cli.Command {
 	return &cli.Command{
-		Name:      "chat",
-		Usage:     "send a message to Hector",
-		ArgsUsage: "<message>",
-		Action:    chatAction,
+		Name:   "chat",
+		Usage:  "interactive chat session (Ctrl-C to exit)",
+		Action: chatAction,
 	}
 }
 
-func chatAction(_ context.Context, cmd *cli.Command) error {
-	fmt.Println(strings.Join(cmd.Args().Slice(), " "))
-	return nil
+func chatAction(ctx context.Context, _ *cli.Command) error {
+	logger := slog.Default().With("command", "chat")
+	logger.InfoContext(ctx, "starting chat command")
+
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
+		return err
+	}
+
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, nil),
+		tui.NewModule(bus, nil),
+	})
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to create supervisor", "err", err)
+		return err
+	}
+
+	rep := sv.Run(ctx)
+	logger.InfoContext(
+		ctx,
+		"chat command finished",
+		"reason", rep.Reason,
+		"trigger_module", rep.TriggerModule,
+		"signal", rep.Signal,
+	)
+	shutdownErr := bus.Shutdown(context.Background())
+	if shutdownErr != nil {
+		logger.ErrorContext(ctx, "event bus shutdown failed", "err", shutdownErr)
+	}
+	return errors.Join(rep.Err(), shutdownErr)
 }
