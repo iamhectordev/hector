@@ -28,7 +28,8 @@ func DefaultSignals() []os.Signal {
 }
 
 // NotifyContext returns a child context canceled with [SignalCause] when a matching OS signal arrives.
-// It also returns a stop function that unregisters signal notifications and cancels the child context.
+// It also returns a stop function that unregisters signal notifications and stops the internal listener.
+// stop does not cancel the returned context.
 func NotifyContext(parent context.Context, signals ...os.Signal) (context.Context, context.CancelFunc) {
 	if len(signals) == 0 {
 		signals = DefaultSignals()
@@ -39,22 +40,25 @@ func NotifyContext(parent context.Context, signals ...os.Signal) (context.Contex
 
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, signals...)
+	stopCh := make(chan struct{})
 
 	var once sync.Once
 	stop := func() {
 		once.Do(func() {
 			signal.Stop(ch)
-			cancelCause(nil)
+			close(stopCh)
 		})
 	}
 
 	go func() {
 		select {
+		case <-stopCh:
+			return
 		case <-ctx.Done():
-			stop()
+			return
 		case sig := <-ch:
 			cancelCause(SignalCause{Signal: sig})
-			stop()
+			return
 		}
 	}()
 

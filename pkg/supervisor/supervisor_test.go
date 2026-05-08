@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -207,4 +209,64 @@ func (m slowStopModule) Start(ctx context.Context) error {
 func (m slowStopModule) Stop(ctx context.Context) error {
 	<-ctx.Done()
 	return ctx.Err()
+}
+
+func TestReport_Err_NilOnCleanSignal(t *testing.T) {
+	t.Parallel()
+	r := supervisor.Report{Reason: supervisor.ReasonSignal}
+	require.NoError(t, r.Err())
+}
+
+func TestReport_Err_ModuleError(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("boom")
+	r := supervisor.Report{Reason: supervisor.ReasonModuleError, Cause: cause}
+	require.ErrorIs(t, r.Err(), cause)
+}
+
+func TestReport_Err_JoinsStopErrors(t *testing.T) {
+	t.Parallel()
+	stopErr := errors.New("stop failed")
+	r := supervisor.Report{
+		Reason:     supervisor.ReasonSignal,
+		StopErrors: map[string]error{"agent": stopErr},
+	}
+	err := r.Err()
+	require.ErrorIs(t, err, stopErr)
+}
+
+func TestReport_Err_ContextCanceledIncludesCause(t *testing.T) {
+	t.Parallel()
+	cause := context.Canceled
+	r := supervisor.Report{
+		Reason: supervisor.ReasonContextCanceled,
+		Cause:  cause,
+	}
+	require.ErrorIs(t, r.Err(), cause)
+}
+
+func TestNotifyContext_StopRaceDoesNotLoseSignalCause(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses SIGUSR1")
+	}
+
+	for i := 0; i < 200; i++ {
+		ctx, stop := supervisor.NotifyContext(context.Background(), syscall.SIGUSR1)
+
+		require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGUSR1))
+		<-ctx.Done()
+
+		stopDone := make(chan struct{})
+		go func() {
+			stop()
+			close(stopDone)
+		}()
+
+		<-stopDone
+
+		cause := context.Cause(ctx)
+		var signalCause supervisor.SignalCause
+		require.True(t, errors.As(cause, &signalCause), "signal cause must be preserved after stop()")
+	}
 }
