@@ -16,7 +16,8 @@ func TestDefinitionCreatesEvent(t *testing.T) {
 	}
 
 	before := time.Now().UTC()
-	def := waffle.Define[messageReceived]("gateway.slack_message_received", 1)
+	def, err := waffle.Define[messageReceived]("gateway.slack_message_received", 1)
+	require.NoError(t, err)
 	event := def.New(messageReceived{Text: "hello"})
 	after := time.Now().UTC()
 

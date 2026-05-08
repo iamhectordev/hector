@@ -22,9 +22,35 @@ Status: done in memory
 
 As a consumer, I can register typed handlers and react independently from other consumers.
 
+## Make It Durable
+
+### Use an app-owned SQLite database
+
+Status: not done
+
+As an app owner, I can give Waffle the SQLite database my app already owns, so Waffle can share storage cleanly with the rest of the process.
+
+The app owns opening, configuring, pooling, and closing the database. Waffle owns its own tables and migrations inside that database.
+
+### Test with disposable SQLite databases
+
+Status: not done
+
+As a developer, I can test Waffle-backed code with either an in-memory database or a temporary file database that is cleaned up automatically.
+
+In-memory databases are useful for fast tests. Temporary file databases are useful when a test needs to close and reopen the database.
+
+### Write the event trail
+
+Status: not done
+
+As an app owner, I can record facts durably, so the facts still exist after the process restarts.
+
+This is about writing the trail well. Convenient review and querying come later.
+
 ## Make It Inspectable
 
-### Keep an event trail
+### Review the event trail
 
 Status: not done
 
@@ -40,9 +66,11 @@ As an operator or developer, I can look up a specific event and understand what 
 
 ### Run safely when handlers fail
 
-Status: not done
+Status: partly done
 
 As an app owner, handler errors or panics do not crash my process.
+
+We now have a reusable process supervisor in `pkg/supervisor` that captures panics and errors, reports the stop reason, and shuts modules down gracefully. Waffle still needs to expose the right runtime boundaries so this protection applies cleanly to Waffle handler execution paths.
 
 ### Choose what happens on handler failure
 
@@ -54,9 +82,11 @@ As an app owner, I can plug in error handling and decide how handler failures ar
 
 ### Start the runtime intentionally
 
-Status: not done
+Status: partly done
 
 As an app owner, I can register handlers and start processing when the app is ready.
+
+The supervisor primitives are in place (`Start(ctx)` / `Stop(ctx)` style lifecycle, context cancellation with cause, optional signal handling), but Waffle runtime start is not yet wired as a first-class integration path.
 
 ### Stop accepting new work
 
@@ -70,7 +100,15 @@ Status: done in memory
 
 As an app owner, I can wait for current work to finish before the process exits.
 
-## Make It Durable
+### Surface shutdown reason clearly
+
+Status: partly done
+
+As an app owner, I can tell whether the runtime stopped because of a signal, a panic, an error, or context cancellation.
+
+The supervisor report already carries this reason model. Waffle still needs to expose/report those reasons in its own runtime-facing API.
+
+## Make It Resilient
 
 ### Resume undelivered work
 

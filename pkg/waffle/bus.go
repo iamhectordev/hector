@@ -11,6 +11,9 @@ import (
 // ErrClosed is returned when recording to a shut down bus.
 var ErrClosed = errors.New("waffle: event bus is closed")
 
+// ErrNilOption is returned when NewEventBus receives a nil option.
+var ErrNilOption = errors.New("waffle: option cannot be nil")
+
 // EventBus records events and dispatches matching handlers asynchronously.
 type EventBus struct {
 	mu       sync.Mutex
@@ -27,20 +30,25 @@ type EventBus struct {
 }
 
 // NewEventBus creates an in-memory event bus.
-func NewEventBus(options ...Option) *EventBus {
+func NewEventBus(options ...Option) (*EventBus, error) {
 	bus := &EventBus{
 		workers:  1,
 		handlers: make(map[string][]registeredHandler),
 	}
 
 	for _, option := range options {
-		option(bus)
+		if option == nil {
+			return nil, ErrNilOption
+		}
+		if err := option(bus); err != nil {
+			return nil, err
+		}
 	}
 
 	bus.jobs = make(chan job, bus.workers*64)
 	bus.start()
 
-	return bus
+	return bus, nil
 }
 
 // Record appends an event and queues matching handlers.

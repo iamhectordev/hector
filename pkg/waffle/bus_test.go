@@ -18,14 +18,17 @@ type testMessage struct {
 
 func TestRecordCallsMatchingTypedHandler(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus()
-	def := waffle.Define[testMessage]("test.message_received", 1)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
 	got := make(chan string, 1)
 
-	waffle.On(bus, def).Handle("test.capture", func(_ context.Context, event waffle.Event[testMessage]) error {
+	err = waffle.On(bus, def).Handle("test.capture", func(_ context.Context, event waffle.Event[testMessage]) error {
 		got <- event.Data().Text
 		return nil
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, bus.Record(ctx, def.New(testMessage{Text: "hello"})))
 	require.NoError(t, bus.Drain(ctx))
@@ -35,18 +38,22 @@ func TestRecordCallsMatchingTypedHandler(t *testing.T) {
 
 func TestRecordFansOutToHandlers(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus()
-	def := waffle.Define[testMessage]("test.message_received", 1)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
 	var calls atomic.Int32
 
-	waffle.On(bus, def).Handle("test.first", func(context.Context, waffle.Event[testMessage]) error {
+	err = waffle.On(bus, def).Handle("test.first", func(context.Context, waffle.Event[testMessage]) error {
 		calls.Add(1)
 		return nil
 	})
-	waffle.On(bus, def).Handle("test.second", func(context.Context, waffle.Event[testMessage]) error {
+	require.NoError(t, err)
+	err = waffle.On(bus, def).Handle("test.second", func(context.Context, waffle.Event[testMessage]) error {
 		calls.Add(1)
 		return nil
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
 	require.NoError(t, bus.Drain(ctx))
@@ -56,15 +63,19 @@ func TestRecordFansOutToHandlers(t *testing.T) {
 
 func TestRecordSkipsOtherEventTypes(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus()
-	messageDef := waffle.Define[testMessage]("test.message_received", 1)
-	otherDef := waffle.Define[testMessage]("test.other_event", 1)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	messageDef, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
+	otherDef, err := waffle.Define[testMessage]("test.other_event", 1)
+	require.NoError(t, err)
 	var calls atomic.Int32
 
-	waffle.On(bus, otherDef).Handle("test.other", func(context.Context, waffle.Event[testMessage]) error {
+	err = waffle.On(bus, otherDef).Handle("test.other", func(context.Context, waffle.Event[testMessage]) error {
 		calls.Add(1)
 		return nil
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, bus.Record(ctx, messageDef.New(testMessage{})))
 	require.NoError(t, bus.Drain(ctx))
@@ -74,17 +85,20 @@ func TestRecordSkipsOtherEventTypes(t *testing.T) {
 
 func TestDrainWaitsForHandlers(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus()
-	def := waffle.Define[testMessage]("test.message_received", 1)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
 	release := make(chan struct{})
 	entered := make(chan struct{}, 1)
 	drained := make(chan error, 1)
 
-	waffle.On(bus, def).Handle("test.block", func(context.Context, waffle.Event[testMessage]) error {
+	err = waffle.On(bus, def).Handle("test.block", func(context.Context, waffle.Event[testMessage]) error {
 		entered <- struct{}{}
 		<-release
 		return nil
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
 
@@ -107,13 +121,16 @@ func TestDrainWaitsForHandlers(t *testing.T) {
 
 func TestDrainReturnsHandlerErrors(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus()
-	def := waffle.Define[testMessage]("test.message_received", 1)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
 	handlerErr := errors.New("handler failed")
 
-	waffle.On(bus, def).Handle("test.fail", func(context.Context, waffle.Event[testMessage]) error {
+	err = waffle.On(bus, def).Handle("test.fail", func(context.Context, waffle.Event[testMessage]) error {
 		return handlerErr
 	})
+	require.NoError(t, err)
 
 	require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
 
@@ -123,17 +140,20 @@ func TestDrainReturnsHandlerErrors(t *testing.T) {
 
 func TestWithWorkersRunsHandlersConcurrently(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus(waffle.WithWorkers(2))
-	def := waffle.Define[testMessage]("test.message_received", 1)
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
 	started := make(chan struct{}, 2)
 	release := make(chan struct{})
 
 	for _, name := range []string{"test.first", "test.second"} {
-		waffle.On(bus, def).Handle(name, func(context.Context, waffle.Event[testMessage]) error {
+		err = waffle.On(bus, def).Handle(name, func(context.Context, waffle.Event[testMessage]) error {
 			started <- struct{}{}
 			<-release
 			return nil
 		})
+		require.NoError(t, err)
 	}
 
 	require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
@@ -153,8 +173,10 @@ func TestWithWorkersRunsHandlersConcurrently(t *testing.T) {
 
 func TestShutdownRejectsRecord(t *testing.T) {
 	ctx := t.Context()
-	bus := waffle.NewEventBus()
-	def := waffle.Define[testMessage]("test.message_received", 1)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
 
 	require.NoError(t, bus.Shutdown(ctx))
 

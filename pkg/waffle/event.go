@@ -1,6 +1,7 @@
 package waffle
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/oklog/ulid/v2"
@@ -36,18 +37,18 @@ type Definition[T any] struct {
 }
 
 // Define creates an event definition for a producer-owned payload type.
-func Define[T any](eventType string, schemaVersion int) Definition[T] {
+func Define[T any](eventType string, schemaVersion int) (Definition[T], error) {
 	if eventType == "" {
-		panic("waffle: event type cannot be empty")
+		return Definition[T]{}, fmt.Errorf("waffle: event type cannot be empty")
 	}
 	if schemaVersion < 1 {
-		panic("waffle: schema version must be positive")
+		return Definition[T]{}, fmt.Errorf("waffle: schema version must be positive")
 	}
 
 	return Definition[T]{
 		eventType:     eventType,
 		schemaVersion: schemaVersion,
-	}
+	}, nil
 }
 
 // Type returns the stable event type used for routing.
