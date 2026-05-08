@@ -39,6 +39,25 @@ func TestNew_SignalHandlingConflictsWithSignalChan(t *testing.T) {
 	require.Contains(t, err.Error(), "cannot be used together")
 }
 
+func TestNew_DuplicatePreStopHookNames(t *testing.T) {
+	t.Parallel()
+	_, err := supervisor.New([]supervisor.Module{exitModule{name: "noop"}},
+		supervisor.WithPreStopHook("same", func(context.Context) error { return nil }),
+		supervisor.WithPreStopHook("same", func(context.Context) error { return nil }),
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate pre-stop hook name")
+}
+
+func TestNew_NilHookFuncRejected(t *testing.T) {
+	t.Parallel()
+	_, err := supervisor.New([]supervisor.Module{exitModule{name: "noop"}},
+		supervisor.WithPostStopHook("db.close", nil),
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "function cannot be nil")
+}
+
 func TestRun_ModuleError(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s, err := supervisor.New([]supervisor.Module{
@@ -161,6 +180,100 @@ func TestRun_StopRecordsDeadline(t *testing.T) {
 	})
 }
 
+func TestRun_HooksExecuteInOrderAroundModuleStop(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sig := make(chan os.Signal, 1)
+		started := make(chan struct{}, 1)
+		order := make(chan string, 3)
+
+		mod := orderedModule{
+			name:    "mod",
+			started: started,
+			onStop: func() {
+				order <- "module.stop"
+			},
+		}
+		s, err := supervisor.New([]supervisor.Module{mod},
+			supervisor.WithSignalChan(sig),
+			supervisor.WithStopTimeout(50*time.Millisecond),
+			supervisor.WithPreStopHook("bus.drain", func(context.Context) error {
+				order <- "pre.bus.drain"
+				return nil
+			}),
+			supervisor.WithPostStopHook("db.close", func(context.Context) error {
+				order <- "post.db.close"
+				return nil
+			}),
+		)
+		require.NoError(t, err)
+
+		done := make(chan supervisor.Report, 1)
+		go func() { done <- s.Run(t.Context()) }()
+
+		<-started
+		sig <- os.Interrupt
+		rep := <-done
+		synctest.Wait()
+
+		require.Equal(t, supervisor.ReasonSignal, rep.Reason)
+		require.Equal(t, "pre.bus.drain", <-order)
+		require.Equal(t, "module.stop", <-order)
+		require.Equal(t, "post.db.close", <-order)
+	})
+}
+
+func TestRun_HookErrorsAreReported(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sig := make(chan os.Signal, 1)
+		preErr := errors.New("drain failed")
+		postErr := errors.New("close failed")
+
+		s, err := supervisor.New([]supervisor.Module{
+			blockUntilCanceled{name: "block", started: make(chan struct{}, 1)},
+		},
+			supervisor.WithSignalChan(sig),
+			supervisor.WithStopTimeout(50*time.Millisecond),
+			supervisor.WithPreStopHook("bus.drain", func(context.Context) error { return preErr }),
+			supervisor.WithPostStopHook("db.close", func(context.Context) error { return postErr }),
+		)
+		require.NoError(t, err)
+
+		go func() { sig <- os.Interrupt }()
+		rep := s.Run(t.Context())
+		synctest.Wait()
+
+		require.Equal(t, supervisor.ReasonSignal, rep.Reason)
+		require.ErrorIs(t, rep.PreStopErrors["bus.drain"], preErr)
+		require.ErrorIs(t, rep.PostStopErrors["db.close"], postErr)
+		require.ErrorIs(t, rep.Err(), preErr)
+		require.ErrorIs(t, rep.Err(), postErr)
+	})
+}
+
+func TestRun_PreStopHookPanicCaptured(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		sig := make(chan os.Signal, 1)
+		s, err := supervisor.New([]supervisor.Module{
+			blockUntilCanceled{name: "block", started: make(chan struct{}, 1)},
+		},
+			supervisor.WithSignalChan(sig),
+			supervisor.WithStopTimeout(50*time.Millisecond),
+			supervisor.WithPreStopHook("panic.hook", func(context.Context) error {
+				panic("boom")
+			}),
+		)
+		require.NoError(t, err)
+
+		go func() { sig <- os.Interrupt }()
+		rep := s.Run(t.Context())
+		synctest.Wait()
+
+		require.Equal(t, supervisor.ReasonSignal, rep.Reason)
+		require.Error(t, rep.PreStopErrors["panic.hook"])
+		require.Contains(t, rep.PreStopErrors["panic.hook"].Error(), "panicked")
+	})
+}
+
 type errModule struct{ name string }
 
 func (m errModule) Name() string                    { return m.name }
@@ -211,6 +324,30 @@ func (m slowStopModule) Stop(ctx context.Context) error {
 	return ctx.Err()
 }
 
+type orderedModule struct {
+	name    string
+	started chan struct{}
+	onStop  func()
+}
+
+func (m orderedModule) Name() string { return m.name }
+
+func (m orderedModule) Start(ctx context.Context) error {
+	select {
+	case m.started <- struct{}{}:
+	default:
+	}
+	<-ctx.Done()
+	return nil
+}
+
+func (m orderedModule) Stop(context.Context) error {
+	if m.onStop != nil {
+		m.onStop()
+	}
+	return nil
+}
+
 func TestReport_Err_NilOnCleanSignal(t *testing.T) {
 	t.Parallel()
 	r := supervisor.Report{Reason: supervisor.ReasonSignal}
@@ -233,6 +370,20 @@ func TestReport_Err_JoinsStopErrors(t *testing.T) {
 	}
 	err := r.Err()
 	require.ErrorIs(t, err, stopErr)
+}
+
+func TestReport_Err_JoinsHookErrors(t *testing.T) {
+	t.Parallel()
+	preErr := errors.New("pre failed")
+	postErr := errors.New("post failed")
+	r := supervisor.Report{
+		Reason:         supervisor.ReasonSignal,
+		PreStopErrors:  map[string]error{"bus.drain": preErr},
+		PostStopErrors: map[string]error{"db.close": postErr},
+	}
+	err := r.Err()
+	require.ErrorIs(t, err, preErr)
+	require.ErrorIs(t, err, postErr)
 }
 
 func TestReport_Err_ContextCanceledIncludesCause(t *testing.T) {

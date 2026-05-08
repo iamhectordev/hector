@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 
 	"github.com/iamhectordev/hector/modules/agent"
@@ -33,7 +32,10 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, nil),
 		tui.NewModule(bus, nil),
-	})
+	},
+		supervisor.WithPreStopHook("bus.drain", bus.Drain),
+		supervisor.WithPostStopHook("bus.shutdown", bus.Shutdown),
+	)
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to create supervisor", "err", err)
 		return err
@@ -47,9 +49,5 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 		"trigger_module", rep.TriggerModule,
 		"signal", rep.Signal,
 	)
-	shutdownErr := bus.Shutdown(context.Background())
-	if shutdownErr != nil {
-		logger.ErrorContext(ctx, "event bus shutdown failed", "err", shutdownErr)
-	}
-	return errors.Join(rep.Err(), shutdownErr)
+	return rep.Err()
 }

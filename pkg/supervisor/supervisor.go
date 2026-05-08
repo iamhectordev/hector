@@ -82,14 +82,18 @@ func (s *Supervisor) Run(parent context.Context) Report {
 
 	cancelRun()
 	t0 := time.Now()
+	preStopErrs := s.runHooks(s.cfg.preStopHooks)
 	stopErrs := s.stopAll()
+	postStopErrs := s.runHooks(s.cfg.postStopHooks)
 	dur := time.Since(t0)
 
-	rep := buildReport(first, stopErrs, dur)
+	rep := buildReport(first, preStopErrs, stopErrs, postStopErrs, dur)
 	if log != nil {
-		if len(rep.StopErrors) > 0 {
+		if len(rep.PreStopErrors) > 0 || len(rep.StopErrors) > 0 || len(rep.PostStopErrors) > 0 {
 			log.ErrorContext(parent, "supervisor: stop completed with errors",
-				slog.Any("stop_errors", rep.StopErrors))
+				slog.Any("pre_stop_errors", rep.PreStopErrors),
+				slog.Any("stop_errors", rep.StopErrors),
+				slog.Any("post_stop_errors", rep.PostStopErrors))
 		} else {
 			log.InfoContext(parent, "supervisor: stop completed",
 				slog.Duration("shutdown_duration", rep.ShutdownDuration))
@@ -170,13 +174,44 @@ func (s *Supervisor) stopAll() map[string]error {
 	return errs
 }
 
-func buildReport(first firstResult, stopErrs map[string]error, dur time.Duration) Report {
+func (s *Supervisor) runHooks(hooks []ShutdownHook) map[string]error {
+	errs := make(map[string]error)
+	for _, hook := range hooks {
+		hookCtx, cancel := context.WithTimeout(context.Background(), s.cfg.stopTimeout)
+		err := runHook(hookCtx, hook)
+		deadlineExceeded := errors.Is(hookCtx.Err(), context.DeadlineExceeded)
+		cancel()
+		switch {
+		case err != nil:
+			errs[hook.Name()] = err
+		case deadlineExceeded:
+			errs[hook.Name()] = fmt.Errorf("hook %q timed out after %s: %w", hook.Name(), s.cfg.stopTimeout, context.DeadlineExceeded)
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
+}
+
+func runHook(ctx context.Context, hook ShutdownHook) (err error) {
+	defer func() {
+		if pv := recover(); pv != nil {
+			err = fmt.Errorf("hook %q panicked: %v", hook.Name(), pv)
+		}
+	}()
+	return hook.Run(ctx)
+}
+
+func buildReport(first firstResult, preStopErrs, stopErrs, postStopErrs map[string]error, dur time.Duration) Report {
 	rep := Report{
 		Reason:           first.reason,
 		TriggerModule:    first.name,
 		Signal:           first.sig,
 		ShutdownDuration: dur,
+		PreStopErrors:    preStopErrs,
 		StopErrors:       stopErrs,
+		PostStopErrors:   postStopErrs,
 	}
 	switch first.reason {
 	case ReasonSignal:

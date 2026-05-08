@@ -15,6 +15,8 @@ type config struct {
 	signals        []os.Signal
 	signalChan     <-chan os.Signal
 	logger         *slog.Logger
+	preStopHooks   []ShutdownHook
+	postStopHooks  []ShutdownHook
 }
 
 // Option configures [Supervisor].

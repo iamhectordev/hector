@@ -42,8 +42,8 @@ type Report struct {
 	PostStopErrors map[string]error
 }
 
-// Err returns a non-nil error when the run failed or module shutdown failed.
-// Clean exits ([ReasonSignal] without stop errors) return nil.
+// Err returns a non-nil error when the run failed or any shutdown step failed.
+// Clean exits ([ReasonSignal] without hook/module stop errors) return nil.
 func (r Report) Err() error {
 	var errs []error
 	switch r.Reason {
