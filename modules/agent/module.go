@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/iamhectordev/hector/modules/agent/internal/processor"
+	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
@@ -36,6 +37,10 @@ func (m *Module) Name() string {
 func (m *Module) Start(ctx context.Context) error {
 	if err := waffle.On(m.bus, tui.MessageReceived).Handle("agent.tui", m.onTUIMessage); err != nil {
 		m.log(ctx).ErrorContext(ctx, "failed to register tui listener", "err", err)
+		return err
+	}
+	if err := waffle.On(m.bus, slack.MessageReceived).Handle("agent.slack", m.onSlackMessage); err != nil {
+		m.log(ctx).ErrorContext(ctx, "failed to register slack listener", "err", err)
 		return err
 	}
 	m.log(ctx).InfoContext(ctx, "agent listeners registered")

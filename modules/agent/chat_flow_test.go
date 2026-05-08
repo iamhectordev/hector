@@ -10,6 +10,7 @@ import (
 
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/agent/internal/processor"
+	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -43,6 +44,40 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	require.ErrorIs(t, rep.Err(), context.Canceled)
 	require.NoError(t, bus.Shutdown(context.Background()))
 	require.Equal(t, "hello\n", buf.String())
+}
+
+func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	buf := newSafeBuffer()
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, processor.New(buf)),
+	})
+	require.NoError(t, err)
+
+	done := make(chan supervisor.Report, 1)
+	go func() {
+		done <- sv.Run(ctx)
+	}()
+
+	require.Eventually(t, func() bool {
+		err := bus.Record(ctx, slack.MessageReceived.New(slack.MessageReceivedData{Text: "hello from slack"}))
+		if err != nil {
+			return false
+		}
+		return waitForWrite(t.Context(), buf, 10*time.Millisecond) == nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	cancel()
+
+	rep := <-done
+	require.ErrorIs(t, rep.Err(), context.Canceled)
+	require.NoError(t, bus.Shutdown(context.Background()))
+	require.Contains(t, buf.String(), "hello from slack\n")
 }
 
 type safeBuffer struct {
