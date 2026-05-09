@@ -2,37 +2,57 @@ package agent
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
+	"os"
 
-	"github.com/iamhectordev/hector/modules/agent/internal/processor"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
-	"github.com/iamhectordev/hector/pkg/llm"
+	"github.com/iamhectordev/hector/pkg/llm/message"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
-// Module receives messages from surfaces and dispatches them to the processor.
+// Completer produces an assistant reply from a message history.
+// Implemented by LLM provider clients in pkg/llm/providers/.
+type Completer interface {
+	Complete(ctx context.Context, messages []*message.Message) (*message.Message, error)
+}
+
+// Module receives messages from surfaces and dispatches them to the completer.
 type Module struct {
 	bus       *waffle.EventBus
-	processor *processor.Processor
+	completer Completer
+	out       io.Writer
 	logger    *slog.Logger
 }
 
-// NewModule registers waffle handlers on bus. If proc is nil, a stdout processor is used.
-func NewModule(bus *waffle.EventBus, proc *processor.Processor) *Module {
-	if proc == nil {
-		proc = processor.New(nil, &llm.EchoCompleter{}, "")
-	}
-	return &Module{
-		bus:       bus,
-		processor: proc,
-		logger:    slog.Default().With("component", "module", "module", "agent"),
+// Option configures a Module.
+type Option func(*Module)
+
+// WithWriter sets where replies are printed. Defaults to stdout.
+func WithWriter(w io.Writer) Option {
+	return func(m *Module) {
+		if w != nil {
+			m.out = w
+		}
 	}
 }
 
-func (m *Module) Name() string {
-	return "agent"
+func NewModule(bus *waffle.EventBus, completer Completer, opts ...Option) *Module {
+	m := &Module{
+		bus:       bus,
+		completer: completer,
+		out:       os.Stdout,
+		logger:    slog.Default().With("component", "module", "module", "agent"),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
 }
+
+func (m *Module) Name() string { return "agent" }
 
 func (m *Module) Init(ctx context.Context) error {
 	if err := waffle.On(m.bus, tui.MessageReceived).Handle("agent.tui", m.onTUIMessage); err != nil {
@@ -47,17 +67,24 @@ func (m *Module) Init(ctx context.Context) error {
 	return nil
 }
 
-// Start blocks until ctx is cancelled.
 func (m *Module) Start(ctx context.Context) error {
 	<-ctx.Done()
 	m.log(ctx).InfoContext(ctx, "agent module stopping", "cause", context.Cause(ctx))
 	return nil
 }
 
-func (m *Module) Stop(context.Context) error {
-	return nil
+func (m *Module) Stop(context.Context) error { return nil }
+
+func (m *Module) handle(ctx context.Context, text string) error {
+	reply, err := m.completer.Complete(ctx, []*message.Message{message.UserMessage(text)})
+	if err != nil {
+		return err
+	}
+	if reply == nil {
+		return fmt.Errorf("llm: nil reply")
+	}
+	_, err = fmt.Fprintln(m.out, reply.Content)
+	return err
 }
 
-func (m *Module) log(context.Context) *slog.Logger {
-	return m.logger
-}
+func (m *Module) log(context.Context) *slog.Logger { return m.logger }

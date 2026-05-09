@@ -6,6 +6,7 @@ import (
 
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/urfave/cli/v3"
@@ -33,7 +34,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	}
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, nil),
+		agent.NewModule(bus, &echo.Completer{}),
 		tui.NewModule(bus, nil),
 	},
 		supervisor.WithLogger(logger),
@@ -46,9 +47,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	}
 
 	rep := sv.Run(ctx)
-	logger.InfoContext(
-		ctx,
-		"chat command finished",
+	logger.InfoContext(ctx, "chat command finished",
 		"reason", rep.Reason,
 		"trigger_module", rep.TriggerModule,
 		"signal", rep.Signal,

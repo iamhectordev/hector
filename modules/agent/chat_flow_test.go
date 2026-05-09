@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/iamhectordev/hector/modules/agent"
-	"github.com/iamhectordev/hector/modules/agent/internal/processor"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/stretchr/testify/require"
@@ -26,7 +26,7 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, processor.New(buf)),
+		agent.NewModule(bus, &echo.Completer{}, agent.WithWriter(buf)),
 		tui.NewModule(bus, strings.NewReader("hello\n")),
 	})
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, processor.New(buf)),
+		agent.NewModule(bus, &echo.Completer{}, agent.WithWriter(buf)),
 	})
 	require.NoError(t, err)
 
