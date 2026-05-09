@@ -6,7 +6,7 @@ import (
 
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tui"
-	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
+	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/urfave/cli/v3"
@@ -24,6 +24,15 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	logger := slog.Default().With("command", "chat")
 	logger.InfoContext(ctx, "starting chat command")
 
+	cfg, err := configFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	completer, err := llm.New(cfg.LLM)
+	if err != nil {
+		return err
+	}
+
 	bus, err := waffle.NewEventBus(
 		waffle.WithWorkers(2),
 		waffle.WithLogger(logger),
@@ -34,7 +43,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	}
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, &echo.Completer{}),
+		agent.NewModule(bus, completer),
 		tui.NewModule(bus),
 	},
 		supervisor.WithLogger(logger),

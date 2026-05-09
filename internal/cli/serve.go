@@ -4,12 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"strings"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
-	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
+	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/urfave/cli/v3"
@@ -27,13 +26,17 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	logger := slog.Default().With("command", "serve")
 	logger.InfoContext(ctx, "starting serve command")
 
-	appToken, err := requiredEnv("SLACK_APP_TOKEN")
+	cfg, err := configFromContext(ctx)
 	if err != nil {
 		return err
 	}
-	botToken, err := requiredEnv("SLACK_BOT_TOKEN")
+	completer, err := llm.New(cfg.LLM)
 	if err != nil {
 		return err
+	}
+	validate := validator.New(validator.WithRequiredStructEnabled())
+	if err := validate.Struct(cfg.Slack); err != nil {
+		return fmt.Errorf("slack: invalid config: %w", err)
 	}
 
 	bus, err := waffle.NewEventBus(
@@ -46,8 +49,8 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	}
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, &echo.Completer{}),
-		slack.NewModule(bus, appToken, botToken),
+		agent.NewModule(bus, completer),
+		slack.NewModule(bus, cfg.Slack.AppToken, cfg.Slack.BotToken),
 	},
 		supervisor.WithLogger(logger),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
@@ -65,12 +68,4 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		"signal", rep.Signal,
 	)
 	return rep.Err()
-}
-
-func requiredEnv(name string) (string, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return "", fmt.Errorf("%s is required", name)
-	}
-	return value, nil
 }
