@@ -2,12 +2,16 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
+	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
+	"github.com/iamhectordev/hector/pkg/waffle"
+	wafflesqlite "github.com/iamhectordev/hector/pkg/waffle/sqlite"
 	"github.com/urfave/cli/v3"
 )
 
@@ -32,9 +36,9 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
-	bus, db, err := newSQLiteBus(ctx, logger, cfg.DB)
+	db, err := dbsqlite.Open(ctx, cfg.DB)
 	if err != nil {
-		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
+		logger.ErrorContext(ctx, "failed to open sqlite database", "err", err)
 		return err
 	}
 	defer func() {
@@ -42,6 +46,19 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 			logger.ErrorContext(ctx, "failed to close sqlite database", "err", closeErr)
 		}
 	}()
+	if err := dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations()); err != nil {
+		logger.ErrorContext(ctx, "failed to migrate sqlite database", "err", err)
+		return fmt.Errorf("waffle migrations: %w", err)
+	}
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(2),
+		waffle.WithLogger(logger),
+		waffle.WithStore(wafflesqlite.NewStore(db)),
+	)
+	if err != nil {
+		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
+		return err
+	}
 
 	slackModule, err := slack.NewModule(bus, cfg.Slack)
 	if err != nil {

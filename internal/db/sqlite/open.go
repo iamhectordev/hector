@@ -9,17 +9,20 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/doron-cohen/klee/xdg"
 	_ "modernc.org/sqlite"
 )
 
 const (
 	defaultMaxOpenConns = 4
 	defaultMaxIdleConns = 4
+	appName             = "hector"
+	defaultDBName       = "hector.db"
 )
 
 // Open opens the app-owned SQLite database with project defaults.
 func Open(ctx context.Context, cfg Config) (*sql.DB, error) {
-	path := strings.TrimSpace(cfg.Path)
+	path := resolvePath(cfg)
 	if path == "" {
 		return nil, fmt.Errorf("db/sqlite: path is required")
 	}
@@ -49,6 +52,14 @@ func Open(ctx context.Context, cfg Config) (*sql.DB, error) {
 	}
 
 	return db, nil
+}
+
+func resolvePath(cfg Config) string {
+	path := strings.TrimSpace(cfg.Path)
+	if path != "" {
+		return path
+	}
+	return filepath.Join(xdg.New(appName).DataHome(), defaultDBName)
 }
 
 func buildDSN(path string) string {
