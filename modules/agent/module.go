@@ -7,6 +7,7 @@ import (
 	"github.com/iamhectordev/hector/modules/agent/internal/processor"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -20,7 +21,7 @@ type Module struct {
 // NewModule registers waffle handlers on bus. If proc is nil, a stdout processor is used.
 func NewModule(bus *waffle.EventBus, proc *processor.Processor) *Module {
 	if proc == nil {
-		proc = processor.New(nil)
+		proc = processor.New(nil, &llm.EchoCompleter{}, "")
 	}
 	return &Module{
 		bus:       bus,
@@ -33,8 +34,7 @@ func (m *Module) Name() string {
 	return "agent"
 }
 
-// Start registers listeners and blocks until ctx is cancelled.
-func (m *Module) Start(ctx context.Context) error {
+func (m *Module) Init(ctx context.Context) error {
 	if err := waffle.On(m.bus, tui.MessageReceived).Handle("agent.tui", m.onTUIMessage); err != nil {
 		m.log(ctx).ErrorContext(ctx, "failed to register tui listener", "err", err)
 		return err
@@ -44,6 +44,11 @@ func (m *Module) Start(ctx context.Context) error {
 		return err
 	}
 	m.log(ctx).InfoContext(ctx, "agent listeners registered")
+	return nil
+}
+
+// Start blocks until ctx is cancelled.
+func (m *Module) Start(ctx context.Context) error {
 	<-ctx.Done()
 	m.log(ctx).InfoContext(ctx, "agent module stopping", "cause", context.Cause(ctx))
 	return nil

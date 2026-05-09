@@ -75,6 +75,20 @@ func TestRun_ModuleError(t *testing.T) {
 	})
 }
 
+func TestRun_InitError(t *testing.T) {
+	t.Parallel()
+	s, err := supervisor.New([]supervisor.Module{
+		initErrModule{name: "bad-init"},
+	}, supervisor.WithStopTimeout(50*time.Millisecond))
+	require.NoError(t, err)
+
+	rep := s.Run(t.Context())
+
+	require.Equal(t, supervisor.ReasonInitError, rep.Reason)
+	require.ErrorContains(t, rep.Cause, "init boom")
+	require.ErrorContains(t, rep.Err(), "init boom")
+}
+
 func TestRun_ContextSignalCause(t *testing.T) {
 	t.Parallel()
 	s, err := supervisor.New([]supervisor.Module{
@@ -274,28 +288,39 @@ func TestRun_PreStopHookPanicCaptured(t *testing.T) {
 
 type errModule struct{ name string }
 
-func (m errModule) Name() string                    { return m.name }
-func (m errModule) Start(ctx context.Context) error { return errors.New("boom") }
-func (m errModule) Stop(ctx context.Context) error  { return nil }
+func (m errModule) Name() string                      { return m.name }
+func (m errModule) Init(ctx context.Context) error    { return nil }
+func (m errModule) Start(ctx context.Context) error   { return errors.New("boom") }
+func (m errModule) Stop(ctx context.Context) error    { return nil }
+
+type initErrModule struct{ name string }
+
+func (m initErrModule) Name() string                    { return m.name }
+func (m initErrModule) Init(context.Context) error      { return errors.New("init boom") }
+func (m initErrModule) Start(ctx context.Context) error { return nil }
+func (m initErrModule) Stop(ctx context.Context) error  { return nil }
 
 type panicModule struct{ name string }
 
-func (m panicModule) Name() string                    { return m.name }
-func (m panicModule) Start(ctx context.Context) error { panic("oops") }
-func (m panicModule) Stop(ctx context.Context) error  { return nil }
+func (m panicModule) Name() string                      { return m.name }
+func (m panicModule) Init(ctx context.Context) error    { return nil }
+func (m panicModule) Start(ctx context.Context) error   { panic("oops") }
+func (m panicModule) Stop(ctx context.Context) error    { return nil }
 
 type exitModule struct{ name string }
 
-func (m exitModule) Name() string                    { return m.name }
-func (m exitModule) Start(ctx context.Context) error { return nil }
-func (m exitModule) Stop(ctx context.Context) error  { return nil }
+func (m exitModule) Name() string                      { return m.name }
+func (m exitModule) Init(ctx context.Context) error    { return nil }
+func (m exitModule) Start(ctx context.Context) error   { return nil }
+func (m exitModule) Stop(ctx context.Context) error    { return nil }
 
 type blockUntilCanceled struct {
 	name    string
 	started chan struct{}
 }
 
-func (m blockUntilCanceled) Name() string { return m.name }
+func (m blockUntilCanceled) Name() string               { return m.name }
+func (m blockUntilCanceled) Init(ctx context.Context) error { return nil }
 
 func (m blockUntilCanceled) Start(ctx context.Context) error {
 	select {
@@ -310,7 +335,8 @@ func (m blockUntilCanceled) Stop(ctx context.Context) error { return nil }
 
 type slowStopModule struct{ name string }
 
-func (m slowStopModule) Name() string { return m.name }
+func (m slowStopModule) Name() string                      { return m.name }
+func (m slowStopModule) Init(ctx context.Context) error    { return nil }
 
 func (m slowStopModule) Start(ctx context.Context) error {
 	<-ctx.Done()
@@ -328,7 +354,8 @@ type orderedModule struct {
 	onStop  func()
 }
 
-func (m orderedModule) Name() string { return m.name }
+func (m orderedModule) Name() string                   { return m.name }
+func (m orderedModule) Init(ctx context.Context) error { return nil }
 
 func (m orderedModule) Start(ctx context.Context) error {
 	select {

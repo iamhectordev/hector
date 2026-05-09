@@ -60,6 +60,10 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 		defer stop()
 	}
 
+	if err := s.initAll(ctx); err != nil {
+		return Report{Reason: ReasonInitError, Cause: err}
+	}
+
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
 
@@ -99,6 +103,15 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 		}
 	}
 	return rep
+}
+
+func (s *Supervisor) initAll(ctx context.Context) error {
+	for _, m := range s.modules {
+		if err := m.Init(ctx); err != nil {
+			return fmt.Errorf("module %q init: %w", m.Name(), err)
+		}
+	}
+	return nil
 }
 
 func (s *Supervisor) runModule(mod Module, runCtx context.Context, events chan<- modEvent) {

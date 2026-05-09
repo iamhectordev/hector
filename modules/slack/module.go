@@ -18,6 +18,7 @@ type Module struct {
 	botToken string
 	apiURL   string
 	logger   *slog.Logger
+	client   *socketmode.Client
 }
 
 type Option func(*Module)
@@ -47,7 +48,7 @@ func (m *Module) Name() string {
 	return "slack"
 }
 
-func (m *Module) Start(ctx context.Context) error {
+func (m *Module) Init(ctx context.Context) error {
 	options := []slackgo.Option{
 		slackgo.OptionAppLevelToken(m.appToken),
 	}
@@ -61,8 +62,12 @@ func (m *Module) Start(ctx context.Context) error {
 		return fmt.Errorf("slack: auth test: %w", err)
 	}
 	m.log(ctx).InfoContext(ctx, "slack auth verified", "team_id", auth.TeamID, "user_id", auth.UserID)
+	m.client = socketmode.New(api)
+	return nil
+}
 
-	return m.run(ctx, socketmode.New(api))
+func (m *Module) Start(ctx context.Context) error {
+	return m.run(ctx, m.client)
 }
 
 func (m *Module) Stop(context.Context) error {

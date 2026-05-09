@@ -34,6 +34,10 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		m := module.NewModule(bus, "xapp-fake-token", "xoxb-fake-token", module.WithAPIURL(srv.BaseURL()+"/api/"))
+		if err := m.Init(ctx); err != nil {
+			done <- err
+			return
+		}
 		done <- m.Start(ctx)
 	}()
 
@@ -75,6 +79,10 @@ func TestModule_Start_ChannelMessageIgnored(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		m := module.NewModule(bus, "xapp-fake-token", "xoxb-fake-token", module.WithAPIURL(srv.BaseURL()+"/api/"))
+		if err := m.Init(ctx); err != nil {
+			done <- err
+			return
+		}
 		done <- m.Start(ctx)
 	}()
 

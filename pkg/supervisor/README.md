@@ -5,13 +5,17 @@ Supervisor runs long-lived modules and coordinates graceful shutdown.
 A module implements:
 
 - `Name() string`
+- `Init(ctx context.Context) error`
 - `Start(ctx context.Context) error`
 - `Stop(ctx context.Context) error`
 
-Supervisor starts all modules, waits for the first stop condition, and then shuts everything down in a controlled order.
+Supervisor calls `Init` on all modules in registration order before starting any of them. If any `Init` fails, `Run` returns immediately with `ReasonInitError` and no modules are started.
+
+After all modules are initialised, Supervisor starts them concurrently, waits for the first stop condition, and then shuts everything down in a controlled order.
 
 Stop conditions include:
 
+- init failed (`Init` returned an error)
 - module returned an error
 - module panicked
 - module stopped unexpectedly (`Start` returned `nil`)

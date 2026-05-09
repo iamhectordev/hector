@@ -16,6 +16,7 @@ const (
 	ReasonModuleError     StopReason = "module_error"
 	ReasonModuleStopped   StopReason = "module_stopped"
 	ReasonContextCanceled StopReason = "context_canceled"
+	ReasonInitError       StopReason = "init_error"
 )
 
 // Report is the outcome of [Supervisor.Run].
@@ -57,6 +58,10 @@ func (r Report) Err() error {
 		}
 	case ReasonModulePanic:
 		errs = append(errs, fmt.Errorf("module %s panicked: %v", r.TriggerModule, r.PanicValue))
+	case ReasonInitError:
+		if r.Cause != nil {
+			errs = append(errs, r.Cause)
+		}
 	}
 	for name, err := range r.PreStopErrors {
 		errs = append(errs, fmt.Errorf("pre-stop hook %s: %w", name, err))

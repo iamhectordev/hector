@@ -33,6 +33,8 @@ func (m *Module) Name() string {
 	return "tui"
 }
 
+func (m *Module) Init(context.Context) error { return nil }
+
 // Start runs the input loop until ctx is cancelled.
 func (m *Module) Start(ctx context.Context) error {
 	m.log(ctx).InfoContext(ctx, "tui input loop starting")
