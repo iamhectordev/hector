@@ -1,4 +1,4 @@
-package agent_test
+package cli_test
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, &echo.Completer{}, agent.WithWriter(buf)),
-		tui.NewModule(bus, strings.NewReader("hello\n")),
+		tui.NewModule(bus, tui.WithReader(strings.NewReader("hello\n"))),
 	})
 	require.NoError(t, err)
 

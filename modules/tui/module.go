@@ -17,21 +17,31 @@ type Module struct {
 	logger *slog.Logger
 }
 
-// NewModule wires the TUI to bus. If in is nil, stdin is used.
-func NewModule(bus *waffle.EventBus, in io.Reader) *Module {
-	if in == nil {
-		in = os.Stdin
-	}
-	return &Module{
-		bus:    bus,
-		in:     in,
-		logger: slog.Default().With("component", "module", "module", "tui"),
+// Option configures a Module.
+type Option func(*Module)
+
+// WithReader sets the input source. Defaults to stdin.
+func WithReader(r io.Reader) Option {
+	return func(m *Module) {
+		if r != nil {
+			m.in = r
+		}
 	}
 }
 
-func (m *Module) Name() string {
-	return "tui"
+func NewModule(bus *waffle.EventBus, opts ...Option) *Module {
+	m := &Module{
+		bus:    bus,
+		in:     os.Stdin,
+		logger: slog.Default().With("component", "module", "module", "tui"),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
 }
+
+func (m *Module) Name() string { return "tui" }
 
 func (m *Module) Init(context.Context) error { return nil }
 
@@ -44,9 +54,7 @@ func (m *Module) Start(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) Stop(context.Context) error {
-	return nil
-}
+func (m *Module) Stop(context.Context) error { return nil }
 
 func (m *Module) inputLoop(ctx context.Context) {
 	scanner := bufio.NewScanner(m.in)
@@ -62,6 +70,4 @@ func (m *Module) inputLoop(ctx context.Context) {
 	}
 }
 
-func (m *Module) log(context.Context) *slog.Logger {
-	return m.logger
-}
+func (m *Module) log(context.Context) *slog.Logger { return m.logger }

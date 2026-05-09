@@ -35,7 +35,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, &echo.Completer{}),
-		tui.NewModule(bus, nil),
+		tui.NewModule(bus),
 	},
 		supervisor.WithLogger(logger),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
