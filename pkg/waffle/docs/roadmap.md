@@ -38,7 +38,7 @@ Status: partly done
 
 As a developer, I can test Waffle-backed code with either an in-memory database or a temporary file database that is cleaned up automatically.
 
-The SQLite package tests use a temp-file database under `t.TempDir()`. There is not yet a small exported helper for apps to copy-paste-free testing.
+The SQLite package tests use a temp-file database under `t.TempDir()`. Next step is an app-owned helper under `internal/db/sqlite` (for app code/tests to reuse), while keeping Waffle-specific test setup private to `pkg/waffle/sqlite`.
 
 ### Write the event trail
 
@@ -78,25 +78,29 @@ We now have a reusable process supervisor in `pkg/supervisor` that captures pani
 
 ### Choose what happens on handler failure
 
-Status: not done
+Status: partly done
 
 As an app owner, I can plug in error handling and decide how handler failures are reported or handled.
+
+`WithErrorHook` now allows custom failure handling/reporting per handler error. Built-in DLQ/retry policy is still not implemented.
 
 ## Make It Controllable
 
 ### Start the runtime intentionally
 
-Status: partly done
+Status: not done
 
 As an app owner, I can register handlers and start processing when the app is ready.
 
-The supervisor primitives are in place (`Start(ctx)` / `Stop(ctx)` style lifecycle, context cancellation with cause, optional signal handling), but Waffle runtime start is not yet wired as a first-class integration path.
+The supervisor primitives are in place (`Start(ctx)` / `Stop(ctx)` style lifecycle, context cancellation with cause, optional signal handling), but Waffle still starts work implicitly in `NewEventBus` instead of exposing an intentional runtime start boundary.
 
 ### Stop accepting new work
 
-Status: partly done
+Status: done
 
 As an app owner, I can stop new records during shutdown.
+
+`EventBus.Shutdown` marks the bus closed, and subsequent `Record` calls return `ErrClosed`.
 
 ### Wait for in-flight work
 
