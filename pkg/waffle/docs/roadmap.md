@@ -26,41 +26,45 @@ As a consumer, I can register typed handlers and react independently from other 
 
 ### Use an app-owned SQLite database
 
-Status: not done
+Status: done
 
 As an app owner, I can give Waffle the SQLite database my app already owns, so Waffle can share storage cleanly with the rest of the process.
 
-The app owns opening, configuring, pooling, and closing the database. Waffle owns its own tables and migrations inside that database.
+The app owns opening, configuring, pooling, and closing the database. Waffle owns its own tables and migrations inside that database (`sqlite.NewStore`, `sqlite.Migrations()` with `pkg/migrations`).
 
 ### Test with disposable SQLite databases
 
-Status: not done
+Status: partly done
 
 As a developer, I can test Waffle-backed code with either an in-memory database or a temporary file database that is cleaned up automatically.
 
-In-memory databases are useful for fast tests. Temporary file databases are useful when a test needs to close and reopen the database.
+The SQLite package tests use a temp-file database under `t.TempDir()`. There is not yet a small exported helper for apps to copy-paste-free testing.
 
 ### Write the event trail
 
-Status: not done
+Status: done
 
 As an app owner, I can record facts durably, so the facts still exist after the process restarts.
 
-This is about writing the trail well. Convenient review and querying come later.
+Use a `sqlite.Store` with `EventBus` and run migrations. Listing and lookup use the same store.
 
 ## Make It Inspectable
 
 ### Review the event trail
 
-Status: not done
+Status: done
 
 As an app owner, I can see which facts happened, when they happened, and the metadata Waffle recorded for them.
 
+`waffle.Reader` lists events newest-first with limit and optional cursor (`Before`). Implemented for the in-memory store and `sqlite.Store`.
+
 ### Inspect one event
 
-Status: not done
+Status: done
 
 As an operator or developer, I can look up a specific event and understand what happened.
+
+`waffle.Reader.Get` and store `Get` load one record by id (SQLite and memory).
 
 ## Make It Safe
 
