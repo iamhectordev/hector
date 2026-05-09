@@ -16,6 +16,9 @@ var ErrClosed = errors.New("waffle: event bus is closed")
 // ErrNilOption is returned when NewEventBus receives a nil option.
 var ErrNilOption = errors.New("waffle: option cannot be nil")
 
+// ErrorHook is called when a handler returns an error.
+type ErrorHook func(ctx context.Context, event AnyEvent, handlerName string, err error)
+
 // EventBus records events and dispatches matching handlers asynchronously.
 type EventBus struct {
 	mu       sync.Mutex
@@ -23,13 +26,13 @@ type EventBus struct {
 	pending  sync.WaitGroup
 	workers  int
 	workerWG conc.WaitGroup
-	logger   *slog.Logger
-	store    Store
+	logger    *slog.Logger
+	store     Store
+	errorHook ErrorHook
 
 	closed   bool
 	jobs     chan job
 	handlers map[string][]registeredHandler
-	errs     []error
 }
 
 // NewEventBus creates an in-memory event bus.
@@ -143,14 +146,7 @@ func (b *EventBus) Drain(ctx context.Context) error {
 		}
 		return err
 	}
-
-	err := b.takeErrors()
-	if err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "drain completed with handler errors", "err", err)
-		}
-	}
-	return err
+	return nil
 }
 
 // Shutdown stops accepting events and waits for workers to exit.
@@ -171,14 +167,7 @@ func (b *EventBus) Shutdown(ctx context.Context) error {
 		}
 		return err
 	}
-
-	err := b.takeErrors()
-	if err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "shutdown completed with handler errors", "err", err)
-		}
-	}
-	return err
+	return nil
 }
 
 func (b *EventBus) register(eventType string, handler registeredHandler) {
@@ -193,7 +182,6 @@ func (b *EventBus) start() {
 		b.workerWG.Go(func() {
 			for job := range b.jobs {
 				if err := job.handler.handle(job.ctx, job.event); err != nil {
-					b.addError(err)
 					if log := b.log(job.ctx); log != nil {
 						log.ErrorContext(job.ctx, "handler failed",
 							"handler", job.handler.name,
@@ -201,6 +189,9 @@ func (b *EventBus) start() {
 							"event_id", job.event.ID(),
 							"err", err,
 						)
+					}
+					if b.errorHook != nil {
+						b.errorHook(job.ctx, job.event, job.handler.name, err)
 					}
 				}
 
@@ -212,22 +203,6 @@ func (b *EventBus) start() {
 
 func (b *EventBus) log(context.Context) *slog.Logger {
 	return b.logger
-}
-
-func (b *EventBus) addError(err error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.errs = append(b.errs, err)
-}
-
-func (b *EventBus) takeErrors() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	err := errors.Join(b.errs...)
-	b.errs = nil
-	return err
 }
 
 type job struct {

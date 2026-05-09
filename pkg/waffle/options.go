@@ -32,6 +32,18 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
+// WithErrorHook sets a function called whenever a handler returns an error.
+// The hook is called in addition to the built-in log line.
+func WithErrorHook(hook ErrorHook) Option {
+	return func(bus *EventBus) error {
+		if hook == nil {
+			return fmt.Errorf("waffle: error hook cannot be nil")
+		}
+		bus.errorHook = hook
+		return nil
+	}
+}
+
 // WithStore sets the event store used by Record.
 func WithStore(store Store) Option {
 	return func(bus *EventBus) error {

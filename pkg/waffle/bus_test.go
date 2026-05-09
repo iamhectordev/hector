@@ -119,13 +119,20 @@ func TestDrainWaitsForHandlers(t *testing.T) {
 	require.NoError(t, <-drained)
 }
 
-func TestDrainReturnsHandlerErrors(t *testing.T) {
+func TestErrorHookCalledOnHandlerFailure(t *testing.T) {
 	ctx := t.Context()
-	bus, err := waffle.NewEventBus()
+	handlerErr := errors.New("handler failed")
+	got := make(chan error, 1)
+
+	bus, err := waffle.NewEventBus(
+		waffle.WithErrorHook(func(_ context.Context, _ waffle.AnyEvent, handlerName string, err error) {
+			require.Equal(t, "test.fail", handlerName)
+			got <- err
+		}),
+	)
 	require.NoError(t, err)
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
-	handlerErr := errors.New("handler failed")
 
 	err = waffle.On(bus, def).Handle("test.fail", func(context.Context, waffle.Event[testMessage]) error {
 		return handlerErr
@@ -133,9 +140,9 @@ func TestDrainReturnsHandlerErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
-
-	require.ErrorIs(t, bus.Drain(ctx), handlerErr)
 	require.NoError(t, bus.Drain(ctx))
+
+	require.ErrorIs(t, <-got, handlerErr)
 }
 
 func TestWithWorkersRunsHandlersConcurrently(t *testing.T) {
