@@ -218,3 +218,11 @@ type failingStore struct {
 func (s failingStore) Append(context.Context, waffle.EventRecord) error {
 	return s.err
 }
+
+func (s failingStore) Get(context.Context, string) (waffle.EventRecord, error) {
+	return waffle.EventRecord{}, waffle.ErrEventNotFound
+}
+
+func (s failingStore) List(context.Context, waffle.EventQuery) ([]waffle.EventRecord, error) {
+	return nil, nil
+}

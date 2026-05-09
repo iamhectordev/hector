@@ -58,6 +58,11 @@ func NewEventBus(options ...Option) (*EventBus, error) {
 	return bus, nil
 }
 
+// Reader returns a reader backed by this bus's store.
+func (b *EventBus) Reader() *Reader {
+	return NewReader(b.store)
+}
+
 // Record appends an event and queues matching handlers.
 func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 	b.stateMu.RLock()

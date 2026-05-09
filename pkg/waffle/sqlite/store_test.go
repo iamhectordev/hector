@@ -127,6 +127,70 @@ func TestStoreSurvivesReopen(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+func TestStoreGet(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	record := waffle.EventRecord{
+		ID:            "evt_get",
+		Type:          "test.event",
+		SchemaVersion: 2,
+		OccurredAt:    time.Date(2026, 6, 1, 15, 30, 0, 0, time.UTC),
+		Payload:       []byte(`{"k":"v"}`),
+	}
+	require.NoError(t, store.Append(ctx, record))
+
+	got, err := store.Get(ctx, record.ID)
+	require.NoError(t, err)
+	require.Equal(t, record.ID, got.ID)
+	require.Equal(t, record.Type, got.Type)
+	require.Equal(t, record.SchemaVersion, got.SchemaVersion)
+	require.True(t, record.OccurredAt.Equal(got.OccurredAt))
+	require.Equal(t, record.Payload, got.Payload)
+
+	_, err = store.Get(ctx, "missing")
+	require.ErrorIs(t, err, waffle.ErrEventNotFound)
+}
+
+func TestStoreList(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+
+	t1 := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	t2 := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
+
+	require.NoError(t, store.Append(ctx, waffle.EventRecord{ID: "a", Type: "t", SchemaVersion: 1, OccurredAt: t1, Payload: []byte(`1`)}))
+	require.NoError(t, store.Append(ctx, waffle.EventRecord{ID: "b", Type: "t", SchemaVersion: 1, OccurredAt: t2, Payload: []byte(`2`)}))
+
+	out, err := store.List(ctx, waffle.EventQuery{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+	require.Equal(t, "b", out[0].ID)
+	require.Equal(t, "a", out[1].ID)
+
+	out, err = store.List(ctx, waffle.EventQuery{Limit: 10, Before: t2})
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, "a", out[0].ID)
+
+	reader := waffle.NewReader(store)
+	list, err := reader.List(ctx, waffle.EventQuery{Limit: 1})
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, "b", list[0].ID)
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
