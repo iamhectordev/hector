@@ -21,27 +21,17 @@ type Module struct {
 	client   *socketmode.Client
 }
 
-type Option func(*Module)
-
-func WithAPIURL(apiURL string) Option {
-	return func(m *Module) {
-		m.apiURL = apiURL
+func NewModule(bus *waffle.EventBus, cfg Config) (*Module, error) {
+	if err := validate.Struct(cfg); err != nil {
+		return nil, fmt.Errorf("slack: invalid config: %w", err)
 	}
-}
-
-func NewModule(bus *waffle.EventBus, appToken, botToken string, opts ...Option) *Module {
-	m := &Module{
+	return &Module{
 		bus:      bus,
-		appToken: appToken,
-		botToken: botToken,
+		appToken: cfg.AppToken,
+		botToken: cfg.BotToken,
+		apiURL:   cfg.APIURL,
 		logger:   slog.Default().With("component", "module", "module", "slack"),
-	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(m)
-		}
-	}
-	return m
+	}, nil
 }
 
 func (m *Module) Name() string {

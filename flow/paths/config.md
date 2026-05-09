@@ -8,63 +8,71 @@ Typed application config loaded once at startup, with each component owning its 
 - `cmd/<app>/main.go` loads typed config via `klee` before running commands.
 - Commands read config from `context.Context` and wire dependencies from typed values.
 - Config loading and config validation are separate steps.
-- Consumers validate only the config required for the dependency they are about to construct.
+- Validation tags belong on config struct fields, not on anonymous or throwaway structs.
+- A package-level `validate` instance lives next to the config it validates — not inside functions.
+- The constructor of a component validates its own config slice; `NewFoo(cfg) (*Foo, error)`.
+- `validate.Struct(cfg.SubConfig)` at the consumer boundary; no `dive` needed for nested structs (only for slices and maps).
 - Do not read raw env vars in command actions when the value belongs in config.
 - Provider or implementation selection belongs in config, not in ad hoc `if env != ""` branches.
-- Use validation tags and a validator at the consumer boundary when that keeps rules local and readable.
 
 ## Outline
 ```go
-// component-owned config
+// component config — tags on fields, package-level validator
+package slack
+
+var validate = validator.New(validator.WithRequiredStructEnabled())
+
+type Config struct {
+    AppToken string `yaml:"app_token" env:"SLACK_APP_TOKEN" validate:"required"`
+    BotToken string `yaml:"bot_token" env:"SLACK_BOT_TOKEN" validate:"required"`
+}
+
+// constructor validates its own config slice and returns an error
+func NewModule(bus *EventBus, cfg Config, opts ...Option) (*Module, error) {
+    if err := validate.Struct(cfg); err != nil {
+        return nil, fmt.Errorf("slack: invalid config: %w", err)
+    }
+    // ...
+}
+
+// factory validates the sub-config it selects
 package llm
 
-type Provider string
-
-const (
-    ProviderEcho   Provider = "echo"
-    ProviderOpenAI Provider = "openai"
-)
+var validate = validator.New(validator.WithRequiredStructEnabled())
 
 type OpenAIConfig struct {
-    APIKey string `yaml:"api_key" env:"OPENAI_API_KEY"`
+    APIKey string `yaml:"api_key" env:"OPENAI_API_KEY" validate:"required"`
     Model  string `yaml:"model" env:"OPENAI_MODEL" default:"gpt-4o-mini"`
 }
 
-type Config struct {
-    DefaultProvider Provider     `yaml:"default_provider" env:"LLM_DEFAULT_PROVIDER" default:"echo" validate:"oneof=echo openai"`
-    OpenAI          OpenAIConfig `yaml:"openai"`
+func New(cfg Config, opts ...Option) (agent.Completer, error) {
+    switch provider {
+    case ProviderOpenAI:
+        if err := validate.Struct(cfg.OpenAI); err != nil {
+            return nil, fmt.Errorf("llm: openai config: %w", err)
+        }
+        return openai.New(cfg.OpenAI.APIKey, cfg.OpenAI.Model), nil
+    }
 }
 
-// app config
-package main
-
-type Config struct {
-    LLM   llm.Config   `yaml:"llm"`
-    Slack slack.Config `yaml:"slack"`
-}
-
-func main() {
-    app := klee.New[Config]("hector", version, cli.Commands())
-    _ = app.LoadConfig(klee.ConfigOptions[Config]{FlagArgs: os.Args})
-    os.Exit(app.Run(ctx, os.Args))
-}
-
-func chatAction(ctx context.Context, _ *cli.Command) error {
+// command just wires — no validation of its own
+func serveAction(ctx context.Context, _ *cli.Command) error {
     cfg := klee.Config[main.Config](ctx)
 
-    completer, err := llm.New(cfg.LLM)
+    completer, err := llm.New(cfg.LLM)       // validates openai sub-config
     if err != nil {
         return err
     }
-
-    return runChat(completer)
+    slackModule, err := slack.NewModule(bus, cfg.Slack)  // validates slack config
+    if err != nil {
+        return err
+    }
+    // wire supervisor ...
 }
 ```
 
 ## Example
-- `pkg/llm` owns provider-selection config and can expose a factory like `llm.New(cfg, ...)`.
-- `modules/slack` owns Slack credentials config and validates it when `serve` constructs the Slack module.
+- `pkg/llm` and `modules/slack` each own their config, define a package-level `validate`, and expose constructors that return errors.
 - `cmd/hector` defines the app config that composes them.
-- `internal/cli/chat.go` and `internal/cli/serve.go` read typed config from context and choose which dependencies to wire.
-- Validation happens when the command or factory is about to construct the dependency, not during config loading.
+- `internal/cli/serve.go` just wires — it does not validate config itself.
 - Use env vars for provider selection when you want no YAML (for example `LLM_DEFAULT_PROVIDER=openai` with `OPENAI_API_KEY` set).

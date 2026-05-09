@@ -1,5 +1,9 @@
 package llm
 
+import "github.com/go-playground/validator/v10"
+
+var validate = validator.New(validator.WithRequiredStructEnabled())
+
 // Provider selects which completer implementation to construct.
 type Provider string
 
@@ -9,7 +13,7 @@ const (
 )
 
 type OpenAIConfig struct {
-	APIKey string `yaml:"api_key" env:"OPENAI_API_KEY"`
+	APIKey string `yaml:"api_key" env:"OPENAI_API_KEY" validate:"required"`
 	Model  string `yaml:"model" env:"OPENAI_MODEL" default:"gpt-4o-mini"`
 }
 

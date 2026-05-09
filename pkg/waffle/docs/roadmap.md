@@ -30,7 +30,7 @@ Status: done
 
 As an app owner, I can give Waffle the SQLite database my app already owns, so Waffle can share storage cleanly with the rest of the process.
 
-The app owns opening, configuring, pooling, and closing the database. Waffle owns its own tables and migrations inside that database (`sqlite.NewStore`, `sqlite.Migrations()` with `pkg/migrations`).
+The app owns opening, configuring, pooling, and closing the database via `internal/db/sqlite`. Waffle owns its own tables and migrations inside that database (`sqlite.NewStore`, `sqlite.Migrations()` with `pkg/migrations`).
 
 ### Test with disposable SQLite databases
 
@@ -46,7 +46,7 @@ Status: done
 
 As an app owner, I can record facts durably, so the facts still exist after the process restarts.
 
-Use a `sqlite.Store` with `EventBus` and run migrations. Listing and lookup use the same store.
+`chat` and `serve` now wire `EventBus` with `sqlite.Store` and run Waffle migrations on startup. Listing and lookup use the same store.
 
 ## Make It Inspectable
 

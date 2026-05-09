@@ -5,14 +5,16 @@ import (
 	"fmt"
 
 	"github.com/doron-cohen/klee"
+	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/llm"
 )
 
 // Config is the typed application config loaded by klee.
 type Config struct {
-	LLM   llm.Config   `yaml:"llm"`
-	Slack slack.Config `yaml:"slack"`
+	DB    dbsqlite.Config `yaml:"db"`
+	LLM   llm.Config      `yaml:"llm"`
+	Slack slack.Config    `yaml:"slack"`
 }
 
 func configFromContext(ctx context.Context) (*Config, error) {

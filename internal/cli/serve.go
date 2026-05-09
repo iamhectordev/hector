@@ -2,15 +2,12 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
-	"github.com/go-playground/validator/v10"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
-	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/urfave/cli/v3"
 )
 
@@ -34,23 +31,26 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(cfg.Slack); err != nil {
-		return fmt.Errorf("slack: invalid config: %w", err)
-	}
 
-	bus, err := waffle.NewEventBus(
-		waffle.WithWorkers(2),
-		waffle.WithLogger(logger),
-	)
+	bus, db, err := newSQLiteBus(ctx, logger, cfg.DB)
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
+		return err
+	}
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.ErrorContext(ctx, "failed to close sqlite database", "err", closeErr)
+		}
+	}()
+
+	slackModule, err := slack.NewModule(bus, cfg.Slack)
+	if err != nil {
 		return err
 	}
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, completer),
-		slack.NewModule(bus, cfg.Slack.AppToken, cfg.Slack.BotToken),
+		slackModule,
 	},
 		supervisor.WithLogger(logger),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
