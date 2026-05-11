@@ -82,8 +82,7 @@ func eventsListAction(ctx context.Context, cmd *cli.Command) error {
 		return writeJSON(cmd.Root().Writer, toEventOutputs(events))
 	}
 
-	writeEventsListHuman(cmd.Root().Writer, events)
-	return nil
+	return writeEventsListHuman(cmd.Root().Writer, events)
 }
 
 func eventsGetAction(ctx context.Context, cmd *cli.Command) error {
@@ -110,8 +109,7 @@ func eventsGetAction(ctx context.Context, cmd *cli.Command) error {
 		return writeJSON(cmd.Root().Writer, toEventOutput(event))
 	}
 
-	writeEventHuman(cmd.Root().Writer, event)
-	return nil
+	return writeEventHuman(cmd.Root().Writer, event)
 }
 
 func openEventReader(ctx context.Context) (*waffle.Reader, func(), error) {
@@ -177,34 +175,55 @@ func writeJSON(w io.Writer, value interface{}) error {
 	return enc.Encode(value)
 }
 
-func writeEventsListHuman(w io.Writer, events []waffle.EventRecord) {
-	fmt.Fprintf(w, "Recent events (%d)\n", len(events))
+func writeEventsListHuman(w io.Writer, events []waffle.EventRecord) error {
+	if _, err := fmt.Fprintf(w, "Recent events (%d)\n", len(events)); err != nil {
+		return err
+	}
 	if len(events) == 0 {
-		return
+		return nil
 	}
 
 	table := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(table, "ID\tTYPE\tOCCURRED AT (UTC)\tVER")
+	if _, err := fmt.Fprintln(table, "ID\tTYPE\tOCCURRED AT (UTC)\tVER"); err != nil {
+		return err
+	}
 	for _, event := range events {
-		fmt.Fprintf(table, "%s\t%s\t%s\t%d\n",
+		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%d\n",
 			event.ID,
 			event.Type,
 			event.OccurredAt.UTC().Format(time.RFC3339),
 			event.SchemaVersion,
-		)
+		); err != nil {
+			return err
+		}
 	}
-	_ = table.Flush()
+	return table.Flush()
 }
 
-func writeEventHuman(w io.Writer, event waffle.EventRecord) {
-	fmt.Fprintln(w, "Event")
-	fmt.Fprintf(w, "  ID:             %s\n", event.ID)
-	fmt.Fprintf(w, "  Type:           %s\n", event.Type)
-	fmt.Fprintf(w, "  Schema version: %d\n", event.SchemaVersion)
-	fmt.Fprintf(w, "  Occurred at:    %s\n", event.OccurredAt.UTC().Format(time.RFC3339))
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Payload")
-	fmt.Fprintln(w, indentPayload(event.Payload))
+func writeEventHuman(w io.Writer, event waffle.EventRecord) error {
+	if _, err := fmt.Fprintln(w, "Event"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  ID:             %s\n", event.ID); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Type:           %s\n", event.Type); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Schema version: %d\n", event.SchemaVersion); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Occurred at:    %s\n", event.OccurredAt.UTC().Format(time.RFC3339)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "Payload"); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintln(w, indentPayload(event.Payload))
+	return err
 }
 
 func indentPayload(payload []byte) string {
