@@ -8,6 +8,7 @@ import (
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
+	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -67,6 +68,7 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, completer),
+		tools.NewModule(bus, tools.TimeNow{}),
 		slackModule,
 	},
 		supervisor.WithLogger(logger),

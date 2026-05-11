@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/doron-cohen/klee v0.0.0
 	github.com/go-playground/validator/v10 v10.30.2
+	github.com/google/jsonschema-go v0.4.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/oklog/ulid/v2 v2.1.1
 	github.com/openai/openai-go/v3 v3.35.0
