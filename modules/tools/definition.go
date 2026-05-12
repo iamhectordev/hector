@@ -3,15 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
-
-	"github.com/google/jsonschema-go/jsonschema"
 )
 
 // Definition describes a tool that can be exposed to agents.
 type Definition struct {
 	Name        string
 	Description string
-	InputSchema *jsonschema.Schema
+	Parameters  json.RawMessage
 }
 
 // Tool is an executable capability with a JSON input schema.

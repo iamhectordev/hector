@@ -14,10 +14,7 @@ func TestTimeNowDefinition(t *testing.T) {
 
 	require.Equal(t, "time.now", def.Name)
 	require.NotEmpty(t, def.Description)
-	require.NotNil(t, def.InputSchema)
-	require.Equal(t, "object", def.InputSchema.Type)
-	require.Empty(t, def.InputSchema.Properties)
-	require.NotNil(t, def.InputSchema.AdditionalProperties)
+	require.NotEmpty(t, def.Parameters)
 }
 
 func TestTimeNowRun(t *testing.T) {

@@ -67,7 +67,7 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	}
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(completer)),
+		agent.NewModule(bus, agent.NewLoop(completer, agent.WithCatalog(agent.NewCatalog(tools.TimeNow{})))),
 		tools.NewModule(bus, tools.TimeNow{}),
 		slackModule,
 	},

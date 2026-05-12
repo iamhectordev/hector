@@ -12,6 +12,11 @@ Read more:
 - Architecture decisions: docs/architecture.md
 - Golden paths: flow/paths/
 
+## Go API Design
+- Functions must not receive `nil`, `""`, or `0` to mean "no value" or "disabled".
+- Optional behaviour: use the `With*` functional options pattern.
+- Required dependencies: prefer an interface; never accept a concrete pointer that callers pass as `nil`.
+
 ## Go Testing
 - Use the external test package when possible.
 - Test the public API, not internals.

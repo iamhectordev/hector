@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"time"
-
-	"github.com/google/jsonschema-go/jsonschema"
 )
 
 type TimeNow struct{}
@@ -13,12 +11,8 @@ type TimeNow struct{}
 func (TimeNow) Definition() Definition {
 	return Definition{
 		Name:        "time.now",
-		Description: "Returns the current UTC time with calendar context.",
-		InputSchema: &jsonschema.Schema{
-			Type:                 "object",
-			Properties:           map[string]*jsonschema.Schema{},
-			AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
-		},
+		Description: "Returns the current UTC time as a formatted string. Does not accept any arguments. Does not support timezones — always UTC.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 	}
 }
 

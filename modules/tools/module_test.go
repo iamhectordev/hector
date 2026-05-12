@@ -6,7 +6,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/stretchr/testify/require"
 
 	"github.com/iamhectordev/hector/modules/tools"
@@ -100,7 +99,7 @@ func (echoTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:        "test.echo",
 		Description: "Echoes the input.",
-		InputSchema: &jsonschema.Schema{Type: "object"},
+		Parameters:  json.RawMessage(`{"type":"object"}`),
 	}
 }
 
@@ -114,7 +113,7 @@ func (failingTool) Definition() tools.Definition {
 	return tools.Definition{
 		Name:        "test.fail",
 		Description: "Always fails.",
-		InputSchema: &jsonschema.Schema{Type: "object"},
+		Parameters:  json.RawMessage(`{"type":"object"}`),
 	}
 }
 
