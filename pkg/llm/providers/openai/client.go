@@ -2,13 +2,15 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
-	"github.com/iamhectordev/hector/modules/agent"
-	"github.com/iamhectordev/hector/pkg/llm/message"
+	"github.com/iamhectordev/hector/pkg/llm/schema"
 	sdkopenai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/packages/param"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 const defaultModel = "gpt-4o-mini"
@@ -18,8 +20,6 @@ type Completer struct {
 	inner sdkopenai.Client
 	model string
 }
-
-var _ agent.Completer = (*Completer)(nil)
 
 func New(apiKey, model string) *Completer {
 	model = strings.TrimSpace(model)
@@ -33,18 +33,27 @@ func New(apiKey, model string) *Completer {
 	}
 }
 
-func (c *Completer) Complete(ctx context.Context, messages []*message.Message) (*message.Message, error) {
-	params := make([]sdkopenai.ChatCompletionMessageParamUnion, 0, len(messages))
-	for _, msg := range messages {
+func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) (*schema.Message, error) {
+	toolNames, tools, err := mapTools(req.Tools)
+	if err != nil {
+		return nil, err
+	}
+
+	params := make([]sdkopenai.ChatCompletionMessageParamUnion, 0, len(req.Messages))
+	for _, msg := range req.Messages {
 		if msg == nil {
 			continue
 		}
 
 		switch msg.Role {
-		case message.User:
+		case schema.RoleSystem:
+			params = append(params, sdkopenai.SystemMessage(msg.Content))
+		case schema.RoleUser:
 			params = append(params, sdkopenai.UserMessage(msg.Content))
-		case message.Assistant:
-			params = append(params, sdkopenai.AssistantMessage(msg.Content))
+		case schema.RoleAssistant:
+			params = append(params, assistantMessageParam(msg, toolNames))
+		case schema.RoleTool:
+			params = append(params, sdkopenai.ToolMessage(msg.Content, msg.ToolCallID))
 		default:
 			return nil, fmt.Errorf("llm: unsupported role %q", msg.Role)
 		}
@@ -57,6 +66,7 @@ func (c *Completer) Complete(ctx context.Context, messages []*message.Message) (
 	completion, err := c.inner.Chat.Completions.New(ctx, sdkopenai.ChatCompletionNewParams{
 		Model:    sdkopenai.ChatModel(c.model),
 		Messages: params,
+		Tools:    tools,
 	})
 	if err != nil {
 		return nil, err
@@ -68,5 +78,105 @@ func (c *Completer) Complete(ctx context.Context, messages []*message.Message) (
 		return nil, fmt.Errorf("llm: no choices returned")
 	}
 
-	return message.AssistantMessage(completion.Choices[0].Message.Content), nil
+	msg := completion.Choices[0].Message
+	reply := schema.AssistantMessage(msg.Content)
+	for _, call := range msg.ToolCalls {
+		name := call.Function.Name
+		if original, ok := toolNames.fromOpenAI[name]; ok {
+			name = original
+		}
+		reply.ToolCalls = append(reply.ToolCalls, schema.ToolCall{
+			ID:        call.ID,
+			Name:      name,
+			Arguments: json.RawMessage(call.Function.Arguments),
+		})
+	}
+	return reply, nil
+}
+
+func assistantMessageParam(msg *schema.Message, names toolNameMaps) sdkopenai.ChatCompletionMessageParamUnion {
+	if len(msg.ToolCalls) == 0 {
+		return sdkopenai.AssistantMessage(msg.Content)
+	}
+
+	paramMsg := sdkopenai.ChatCompletionAssistantMessageParam{}
+	if msg.Content != "" {
+		paramMsg.Content.OfString = param.NewOpt(msg.Content)
+	}
+	for _, call := range msg.ToolCalls {
+		name := call.Name
+		if mapped, ok := names.toOpenAI[call.Name]; ok {
+			name = mapped
+		}
+		paramMsg.ToolCalls = append(paramMsg.ToolCalls, sdkopenai.ChatCompletionMessageToolCallUnionParam{
+			OfFunction: &sdkopenai.ChatCompletionMessageFunctionToolCallParam{
+				ID: call.ID,
+				Function: sdkopenai.ChatCompletionMessageFunctionToolCallFunctionParam{
+					Name:      name,
+					Arguments: string(call.Arguments),
+				},
+			},
+		})
+	}
+	return sdkopenai.ChatCompletionMessageParamUnion{OfAssistant: &paramMsg}
+}
+
+func mapTools(defs []schema.ToolDefinition) (toolNameMaps, []sdkopenai.ChatCompletionToolUnionParam, error) {
+	names := toolNameMaps{
+		toOpenAI:   make(map[string]string, len(defs)),
+		fromOpenAI: make(map[string]string, len(defs)),
+	}
+	tools := make([]sdkopenai.ChatCompletionToolUnionParam, 0, len(defs))
+	for _, def := range defs {
+		name := openAIToolName(def.Name)
+		if existing, ok := names.fromOpenAI[name]; ok && existing != def.Name {
+			return toolNameMaps{}, nil, fmt.Errorf("llm: tool names %q and %q both map to %q", existing, def.Name, name)
+		}
+		names.toOpenAI[def.Name] = name
+		names.fromOpenAI[name] = def.Name
+
+		parameters := shared.FunctionParameters{}
+		if len(def.Parameters) > 0 {
+			if err := json.Unmarshal(def.Parameters, &parameters); err != nil {
+				return toolNameMaps{}, nil, fmt.Errorf("llm: tool %q parameters: %w", def.Name, err)
+			}
+		}
+
+		tools = append(tools, sdkopenai.ChatCompletionFunctionTool(shared.FunctionDefinitionParam{
+			Name:        name,
+			Description: param.NewOpt(def.Description),
+			Parameters:  parameters,
+		}))
+	}
+	return names, tools, nil
+}
+
+func openAIToolName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		case r == '_' || r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	if b.Len() == 0 {
+		return "tool"
+	}
+	return b.String()
+}
+
+type toolNameMaps struct {
+	toOpenAI   map[string]string
+	fromOpenAI map[string]string
 }

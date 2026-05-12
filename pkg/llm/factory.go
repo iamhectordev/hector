@@ -3,7 +3,6 @@ package llm
 import (
 	"fmt"
 
-	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
 	openaiprovider "github.com/iamhectordev/hector/pkg/llm/providers/openai"
 )
@@ -22,8 +21,8 @@ func WithProvider(provider Provider) Option {
 	}
 }
 
-// New constructs an agent completer from typed config.
-func New(cfg Config, opts ...Option) (agent.Completer, error) {
+// New constructs a completer from typed config.
+func New(cfg Config, opts ...Option) (Completer, error) {
 	o := options{provider: cfg.DefaultProvider}
 	if o.provider == "" {
 		o.provider = ProviderEcho

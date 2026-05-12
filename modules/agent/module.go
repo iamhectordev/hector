@@ -9,15 +9,9 @@ import (
 
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
-	"github.com/iamhectordev/hector/pkg/llm/message"
+	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
-
-// Completer produces an assistant reply from a message history.
-// Implemented by LLM provider clients in pkg/llm/providers/.
-type Completer interface {
-	Complete(ctx context.Context, messages []*message.Message) (*message.Message, error)
-}
 
 // Module receives messages from surfaces and dispatches them to the runner.
 type Module struct {
@@ -76,7 +70,7 @@ func (m *Module) Start(ctx context.Context) error {
 func (m *Module) Stop(context.Context) error { return nil }
 
 func (m *Module) handle(ctx context.Context, text string) error {
-	reply, err := m.runner.Run(ctx, []*message.Message{message.UserMessage(text)})
+	reply, err := m.runner.Run(ctx, []*schema.Message{schema.UserMessage(text)})
 	if err != nil {
 		return err
 	}
