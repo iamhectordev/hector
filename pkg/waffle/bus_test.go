@@ -20,6 +20,7 @@ func TestRecordCallsMatchingTypedHandler(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus()
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 	got := make(chan string, 1)
@@ -40,6 +41,7 @@ func TestRecordFansOutToHandlers(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus()
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 	var calls atomic.Int32
@@ -65,6 +67,7 @@ func TestRecordSkipsOtherEventTypes(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus()
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	messageDef, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 	otherDef, err := waffle.Define[testMessage]("test.other_event", 1)
@@ -87,6 +90,7 @@ func TestDrainWaitsForHandlers(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus()
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 	release := make(chan struct{})
@@ -131,6 +135,7 @@ func TestErrorHookCalledOnHandlerFailure(t *testing.T) {
 		}),
 	)
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 
@@ -149,6 +154,7 @@ func TestWithWorkersRunsHandlersConcurrently(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 	started := make(chan struct{}, 2)
@@ -190,11 +196,31 @@ func TestShutdownRejectsRecord(t *testing.T) {
 	require.ErrorIs(t, bus.Record(ctx, def.New(testMessage{})), waffle.ErrClosed)
 }
 
+func TestRecordBeforeStartReturnsError(t *testing.T) {
+	ctx := t.Context()
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, bus.Record(ctx, def.New(testMessage{})), waffle.ErrNotStarted)
+}
+
+func TestStartIsIdempotent(t *testing.T) {
+	ctx := t.Context()
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+
+	require.NoError(t, bus.Start(ctx))
+	require.NoError(t, bus.Start(ctx))
+}
+
 func TestRecordAppendsToStore(t *testing.T) {
 	ctx := t.Context()
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 
@@ -212,6 +238,7 @@ func TestRecordReturnsStoreErrors(t *testing.T) {
 	storeErr := errors.New("store failed")
 	bus, err := waffle.NewEventBus(waffle.WithStore(failingStore{err: storeErr}))
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)
 

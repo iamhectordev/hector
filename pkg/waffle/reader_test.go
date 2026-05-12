@@ -25,6 +25,7 @@ func TestBusReader(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
 
 	def, err := waffle.Define[testMessage]("test.message_received", 1)
 	require.NoError(t, err)

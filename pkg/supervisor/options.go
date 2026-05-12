@@ -15,6 +15,7 @@ type config struct {
 	signals        []os.Signal
 	signalChan     <-chan os.Signal
 	logger         *slog.Logger
+	postInitHooks  []ShutdownHook
 	preStopHooks   []ShutdownHook
 	postStopHooks  []ShutdownHook
 }

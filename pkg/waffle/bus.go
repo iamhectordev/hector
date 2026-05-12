@@ -13,6 +13,9 @@ import (
 // ErrClosed is returned when recording to a shut down bus.
 var ErrClosed = errors.New("waffle: event bus is closed")
 
+// ErrNotStarted is returned when recording before the event bus is started.
+var ErrNotStarted = errors.New("waffle: event bus is not started")
+
 // ErrNilOption is returned when NewEventBus receives a nil option.
 var ErrNilOption = errors.New("waffle: option cannot be nil")
 
@@ -21,15 +24,16 @@ type ErrorHook func(ctx context.Context, event AnyEvent, handlerName string, err
 
 // EventBus records events and dispatches matching handlers asynchronously.
 type EventBus struct {
-	mu       sync.Mutex
-	stateMu  sync.RWMutex
-	pending  sync.WaitGroup
-	workers  int
-	workerWG conc.WaitGroup
+	mu        sync.Mutex
+	stateMu   sync.RWMutex
+	pending   sync.WaitGroup
+	workers   int
+	workerWG  conc.WaitGroup
 	logger    *slog.Logger
 	store     Store
 	errorHook ErrorHook
 
+	started  bool
 	closed   bool
 	jobs     chan job
 	handlers map[string][]registeredHandler
@@ -52,12 +56,6 @@ func NewEventBus(options ...Option) (*EventBus, error) {
 		}
 	}
 
-	bus.jobs = make(chan job, bus.workers*64)
-	bus.start()
-	if log := bus.log(context.Background()); log != nil {
-		log.Info("event bus started", "workers", bus.workers)
-	}
-
 	return bus, nil
 }
 
@@ -76,6 +74,12 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 			log.ErrorContext(ctx, "record rejected on closed bus", "event_type", event.Type(), "err", ErrClosed)
 		}
 		return ErrClosed
+	}
+	if !b.started {
+		if log := b.log(ctx); log != nil {
+			log.ErrorContext(ctx, "record rejected on stopped bus", "event_type", event.Type(), "err", ErrNotStarted)
+		}
+		return ErrNotStarted
 	}
 
 	record, err := eventRecord(event)
@@ -138,6 +142,27 @@ func eventPayload(event AnyEvent) ([]byte, error) {
 	return payload, nil
 }
 
+// Start begins dispatching recorded events to handlers.
+func (b *EventBus) Start(ctx context.Context) error {
+	b.stateMu.Lock()
+	defer b.stateMu.Unlock()
+
+	if b.closed {
+		return ErrClosed
+	}
+	if b.started {
+		return nil
+	}
+
+	b.jobs = make(chan job, b.workers*64)
+	b.start()
+	b.started = true
+	if log := b.log(ctx); log != nil {
+		log.InfoContext(ctx, "event bus started", "workers", b.workers)
+	}
+	return nil
+}
+
 // Drain waits until all queued and running handlers finish.
 func (b *EventBus) Drain(ctx context.Context) error {
 	if err := waitContext(ctx, b.pending.Wait); err != nil {
@@ -154,7 +179,9 @@ func (b *EventBus) Shutdown(ctx context.Context) error {
 	b.stateMu.Lock()
 	if !b.closed {
 		b.closed = true
-		close(b.jobs)
+		if b.started {
+			close(b.jobs)
+		}
 		if log := b.log(ctx); log != nil {
 			log.InfoContext(ctx, "event bus shutting down")
 		}

@@ -63,6 +63,9 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 	if err := s.initAll(ctx); err != nil {
 		return Report{Reason: ReasonInitError, Cause: err}
 	}
+	if err := s.runPostInitHooks(ctx); err != nil {
+		return Report{Reason: ReasonInitError, Cause: err}
+	}
 
 	runCtx, cancelRun := context.WithCancel(ctx)
 	defer cancelRun()
@@ -109,6 +112,15 @@ func (s *Supervisor) initAll(ctx context.Context) error {
 	for _, m := range s.modules {
 		if err := m.Init(ctx); err != nil {
 			return fmt.Errorf("module %q init: %w", m.Name(), err)
+		}
+	}
+	return nil
+}
+
+func (s *Supervisor) runPostInitHooks(ctx context.Context) error {
+	for _, hook := range s.cfg.postInitHooks {
+		if err := runHook(ctx, hook); err != nil {
+			return fmt.Errorf("post-init hook %q: %w", hook.Name(), err)
 		}
 	}
 	return nil

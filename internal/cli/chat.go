@@ -65,6 +65,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 		tui.NewModule(bus),
 	},
 		supervisor.WithLogger(logger),
+		supervisor.WithPostInitHook("bus.start", bus.Start),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
 		supervisor.WithPostStopHook("bus.shutdown", bus.Shutdown),
 	)

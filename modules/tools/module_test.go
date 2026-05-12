@@ -19,6 +19,7 @@ func TestModuleEmitsCallCompleted(t *testing.T) {
 	require.NoError(t, err)
 	module := tools.NewModule(bus, echoTool{})
 	require.NoError(t, module.Init(ctx))
+	require.NoError(t, bus.Start(ctx))
 
 	require.NoError(t, bus.Record(ctx, tools.CallRequested.New(tools.CallRequestedData{
 		CallID: "call_123",
@@ -41,6 +42,7 @@ func TestModuleEmitsErrorForUnknownTool(t *testing.T) {
 	require.NoError(t, err)
 	module := tools.NewModule(bus)
 	require.NoError(t, module.Init(ctx))
+	require.NoError(t, bus.Start(ctx))
 
 	require.NoError(t, bus.Record(ctx, tools.CallRequested.New(tools.CallRequestedData{
 		CallID: "call_missing",
@@ -63,6 +65,7 @@ func TestModuleEmitsErrorForToolFailure(t *testing.T) {
 	require.NoError(t, err)
 	module := tools.NewModule(bus, failingTool{})
 	require.NoError(t, module.Init(ctx))
+	require.NoError(t, bus.Start(ctx))
 
 	require.NoError(t, bus.Record(ctx, tools.CallRequested.New(tools.CallRequestedData{
 		CallID: "call_failed",

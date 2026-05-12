@@ -72,6 +72,7 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		slackModule,
 	},
 		supervisor.WithLogger(logger),
+		supervisor.WithPostInitHook("bus.start", bus.Start),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
 		supervisor.WithPostStopHook("bus.shutdown", bus.Shutdown),
 	)

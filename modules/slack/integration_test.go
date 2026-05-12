@@ -46,6 +46,10 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 			done <- err
 			return
 		}
+		if err := bus.Start(ctx); err != nil {
+			done <- err
+			return
+		}
 		done <- m.Start(ctx)
 	}()
 
@@ -96,6 +100,10 @@ func TestModule_Start_ChannelMessageIgnored(t *testing.T) {
 			return
 		}
 		if err := m.Init(ctx); err != nil {
+			done <- err
+			return
+		}
+		if err := bus.Start(ctx); err != nil {
 			done <- err
 			return
 		}

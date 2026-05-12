@@ -28,7 +28,7 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}), agent.WithWriter(buf)),
 		tui.NewModule(bus, tui.WithReader(strings.NewReader("hello\n"))),
-	})
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
 	done := make(chan supervisor.Report, 1)
@@ -56,7 +56,7 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}), agent.WithWriter(buf)),
-	})
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
 	done := make(chan supervisor.Report, 1)

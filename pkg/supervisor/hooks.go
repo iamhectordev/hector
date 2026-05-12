@@ -24,6 +24,12 @@ func (h hookFunc) Run(ctx context.Context) error {
 	return h.fn(ctx)
 }
 
+// WithPostInitHook registers a single hook that runs after all module Init calls
+// and before any module Start call.
+func WithPostInitHook(name string, fn func(context.Context) error) Option {
+	return WithPostInitHooks(hookFunc{name: name, fn: fn})
+}
+
 // WithPreStopHook registers a single hook that runs before module Stop calls.
 func WithPreStopHook(name string, fn func(context.Context) error) Option {
 	return WithPreStopHooks(hookFunc{name: name, fn: fn})
@@ -42,6 +48,19 @@ func WithPreStopHooks(hooks ...ShutdownHook) Option {
 			return err
 		}
 		c.preStopHooks = validated
+		return nil
+	}
+}
+
+// WithPostInitHooks registers hooks that run after all module Init calls and
+// before any module Start call.
+func WithPostInitHooks(hooks ...ShutdownHook) Option {
+	return func(c *config) error {
+		validated, err := validateHooks("post-init", c.postInitHooks, hooks)
+		if err != nil {
+			return err
+		}
+		c.postInitHooks = validated
 		return nil
 	}
 }

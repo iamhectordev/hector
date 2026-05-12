@@ -47,10 +47,20 @@ func TestNew_DuplicatePreStopHookNames(t *testing.T) {
 	require.Contains(t, err.Error(), "duplicate pre-stop hook name")
 }
 
+func TestNew_DuplicatePostInitHookNames(t *testing.T) {
+	t.Parallel()
+	_, err := supervisor.New([]supervisor.Module{exitModule{name: "noop"}},
+		supervisor.WithPostInitHook("same", func(context.Context) error { return nil }),
+		supervisor.WithPostInitHook("same", func(context.Context) error { return nil }),
+	)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate post-init hook name")
+}
+
 func TestNew_NilHookFuncRejected(t *testing.T) {
 	t.Parallel()
 	_, err := supervisor.New([]supervisor.Module{exitModule{name: "noop"}},
-		supervisor.WithPostStopHook("db.close", nil),
+		supervisor.WithPostInitHook("bus.start", nil),
 	)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "function cannot be nil")
@@ -87,6 +97,67 @@ func TestRun_InitError(t *testing.T) {
 	require.Equal(t, supervisor.ReasonInitError, rep.Reason)
 	require.ErrorContains(t, rep.Cause, "init boom")
 	require.ErrorContains(t, rep.Err(), "init boom")
+}
+
+func TestRun_PostInitHookRunsAfterInitBeforeStart(t *testing.T) {
+	sig := make(chan os.Signal, 1)
+	order := make(chan string, 5)
+	s, err := supervisor.New([]supervisor.Module{
+		lifecycleModule{
+			name:    "one",
+			onInit:  func() { order <- "one.init" },
+			onStart: func() { order <- "one.start" },
+		},
+		lifecycleModule{
+			name:    "two",
+			onInit:  func() { order <- "two.init" },
+			onStart: func() { order <- "two.start" },
+		},
+	},
+		supervisor.WithSignalChan(sig),
+		supervisor.WithStopTimeout(50*time.Millisecond),
+		supervisor.WithPostInitHook("bus.start", func(context.Context) error {
+			order <- "post.bus.start"
+			return nil
+		}),
+	)
+	require.NoError(t, err)
+
+	done := make(chan supervisor.Report, 1)
+	go func() { done <- s.Run(t.Context()) }()
+
+	require.Equal(t, "one.init", <-order)
+	require.Equal(t, "two.init", <-order)
+	require.Equal(t, "post.bus.start", <-order)
+	require.Contains(t, []string{"one.start", "two.start"}, <-order)
+
+	sig <- os.Interrupt
+	rep := <-done
+	require.Equal(t, supervisor.ReasonSignal, rep.Reason)
+}
+
+func TestRun_PostInitHookErrorPreventsStart(t *testing.T) {
+	postErr := errors.New("bus failed")
+	started := make(chan struct{}, 1)
+	s, err := supervisor.New([]supervisor.Module{
+		lifecycleModule{
+			name:    "mod",
+			onStart: func() { started <- struct{}{} },
+		},
+	},
+		supervisor.WithStopTimeout(50*time.Millisecond),
+		supervisor.WithPostInitHook("bus.start", func(context.Context) error {
+			return postErr
+		}),
+	)
+	require.NoError(t, err)
+
+	rep := s.Run(t.Context())
+
+	require.Equal(t, supervisor.ReasonInitError, rep.Reason)
+	require.ErrorIs(t, rep.Cause, postErr)
+	require.ErrorContains(t, rep.Cause, "post-init hook")
+	require.Empty(t, started)
 }
 
 func TestRun_ContextSignalCause(t *testing.T) {
@@ -288,10 +359,10 @@ func TestRun_PreStopHookPanicCaptured(t *testing.T) {
 
 type errModule struct{ name string }
 
-func (m errModule) Name() string                      { return m.name }
-func (m errModule) Init(ctx context.Context) error    { return nil }
-func (m errModule) Start(ctx context.Context) error   { return errors.New("boom") }
-func (m errModule) Stop(ctx context.Context) error    { return nil }
+func (m errModule) Name() string                    { return m.name }
+func (m errModule) Init(ctx context.Context) error  { return nil }
+func (m errModule) Start(ctx context.Context) error { return errors.New("boom") }
+func (m errModule) Stop(ctx context.Context) error  { return nil }
 
 type initErrModule struct{ name string }
 
@@ -302,24 +373,55 @@ func (m initErrModule) Stop(ctx context.Context) error  { return nil }
 
 type panicModule struct{ name string }
 
-func (m panicModule) Name() string                      { return m.name }
-func (m panicModule) Init(ctx context.Context) error    { return nil }
-func (m panicModule) Start(ctx context.Context) error   { panic("oops") }
-func (m panicModule) Stop(ctx context.Context) error    { return nil }
+func (m panicModule) Name() string                    { return m.name }
+func (m panicModule) Init(ctx context.Context) error  { return nil }
+func (m panicModule) Start(ctx context.Context) error { panic("oops") }
+func (m panicModule) Stop(ctx context.Context) error  { return nil }
 
 type exitModule struct{ name string }
 
-func (m exitModule) Name() string                      { return m.name }
-func (m exitModule) Init(ctx context.Context) error    { return nil }
-func (m exitModule) Start(ctx context.Context) error   { return nil }
-func (m exitModule) Stop(ctx context.Context) error    { return nil }
+func (m exitModule) Name() string                    { return m.name }
+func (m exitModule) Init(ctx context.Context) error  { return nil }
+func (m exitModule) Start(ctx context.Context) error { return nil }
+func (m exitModule) Stop(ctx context.Context) error  { return nil }
+
+type lifecycleModule struct {
+	name    string
+	onInit  func()
+	onStart func()
+	onStop  func()
+}
+
+func (m lifecycleModule) Name() string { return m.name }
+
+func (m lifecycleModule) Init(ctx context.Context) error {
+	if m.onInit != nil {
+		m.onInit()
+	}
+	return nil
+}
+
+func (m lifecycleModule) Start(ctx context.Context) error {
+	if m.onStart != nil {
+		m.onStart()
+	}
+	<-ctx.Done()
+	return nil
+}
+
+func (m lifecycleModule) Stop(ctx context.Context) error {
+	if m.onStop != nil {
+		m.onStop()
+	}
+	return nil
+}
 
 type blockUntilCanceled struct {
 	name    string
 	started chan struct{}
 }
 
-func (m blockUntilCanceled) Name() string               { return m.name }
+func (m blockUntilCanceled) Name() string                   { return m.name }
 func (m blockUntilCanceled) Init(ctx context.Context) error { return nil }
 
 func (m blockUntilCanceled) Start(ctx context.Context) error {
@@ -335,8 +437,8 @@ func (m blockUntilCanceled) Stop(ctx context.Context) error { return nil }
 
 type slowStopModule struct{ name string }
 
-func (m slowStopModule) Name() string                      { return m.name }
-func (m slowStopModule) Init(ctx context.Context) error    { return nil }
+func (m slowStopModule) Name() string                   { return m.name }
+func (m slowStopModule) Init(ctx context.Context) error { return nil }
 
 func (m slowStopModule) Start(ctx context.Context) error {
 	<-ctx.Done()
