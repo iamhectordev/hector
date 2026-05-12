@@ -61,7 +61,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	}
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, completer),
+		agent.NewModule(bus, agent.NewLoop(completer)),
 		tui.NewModule(bus),
 	},
 		supervisor.WithLogger(logger),

@@ -19,12 +19,12 @@ type Completer interface {
 	Complete(ctx context.Context, messages []*message.Message) (*message.Message, error)
 }
 
-// Module receives messages from surfaces and dispatches them to the completer.
+// Module receives messages from surfaces and dispatches them to the runner.
 type Module struct {
-	bus       *waffle.EventBus
-	completer Completer
-	out       io.Writer
-	logger    *slog.Logger
+	bus    *waffle.EventBus
+	runner Runner
+	out    io.Writer
+	logger *slog.Logger
 }
 
 // Option configures a Module.
@@ -39,12 +39,12 @@ func WithWriter(w io.Writer) Option {
 	}
 }
 
-func NewModule(bus *waffle.EventBus, completer Completer, opts ...Option) *Module {
+func NewModule(bus *waffle.EventBus, runner Runner, opts ...Option) *Module {
 	m := &Module{
-		bus:       bus,
-		completer: completer,
-		out:       os.Stdout,
-		logger:    slog.Default().With("component", "module", "module", "agent"),
+		bus:    bus,
+		runner: runner,
+		out:    os.Stdout,
+		logger: slog.Default().With("component", "module", "module", "agent"),
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -76,12 +76,9 @@ func (m *Module) Start(ctx context.Context) error {
 func (m *Module) Stop(context.Context) error { return nil }
 
 func (m *Module) handle(ctx context.Context, text string) error {
-	reply, err := m.completer.Complete(ctx, []*message.Message{message.UserMessage(text)})
+	reply, err := m.runner.Run(ctx, []*message.Message{message.UserMessage(text)})
 	if err != nil {
 		return err
-	}
-	if reply == nil {
-		return fmt.Errorf("llm: nil reply")
 	}
 	_, err = fmt.Fprintln(m.out, reply.Content)
 	return err

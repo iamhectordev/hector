@@ -26,7 +26,7 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, &echo.Completer{}, agent.WithWriter(buf)),
+		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}), agent.WithWriter(buf)),
 		tui.NewModule(bus, tui.WithReader(strings.NewReader("hello\n"))),
 	})
 	require.NoError(t, err)
@@ -55,7 +55,7 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, &echo.Completer{}, agent.WithWriter(buf)),
+		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}), agent.WithWriter(buf)),
 	})
 	require.NoError(t, err)
 
