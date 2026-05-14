@@ -74,6 +74,9 @@ func (m *Module) handle(ctx context.Context, text string) error {
 	if err != nil {
 		return err
 	}
+	if reply == nil {
+		return nil
+	}
 	_, err = fmt.Fprintln(m.out, reply.Content)
 	return err
 }
