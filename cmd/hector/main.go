@@ -15,7 +15,7 @@ func main() {
 	defer stopSignals()
 
 	app := klee.New[cli.Config]("hector", "dev", cli.Commands())
-	if err := app.LoadConfig(klee.ConfigOptions[cli.Config]{FlagArgs: os.Args}); err != nil {
+	if err := app.LoadConfig(klee.ConfigOptions[cli.Config]{FlagArgs: os.Args, DotEnvFiles: []string{".env"}}); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
