@@ -150,6 +150,32 @@ func TestErrorHookCalledOnHandlerFailure(t *testing.T) {
 	require.ErrorIs(t, <-got, handlerErr)
 }
 
+func TestHandlerPanicReportedAsFailure(t *testing.T) {
+	ctx := t.Context()
+	got := make(chan error, 1)
+
+	bus, err := waffle.NewEventBus(
+		waffle.WithErrorHook(func(_ context.Context, _ waffle.AnyEvent, handlerName string, err error) {
+			require.Equal(t, "test.panic", handlerName)
+			got <- err
+		}),
+	)
+	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
+	def, err := waffle.Define[testMessage]("test.message_received", 1)
+	require.NoError(t, err)
+
+	err = waffle.On(bus, def).Handle("test.panic", func(context.Context, waffle.Event[testMessage]) error {
+		panic("handler panic")
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
+	require.NoError(t, bus.Drain(ctx))
+
+	require.ErrorContains(t, <-got, "handler panic")
+}
+
 func TestWithWorkersRunsHandlersConcurrently(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))

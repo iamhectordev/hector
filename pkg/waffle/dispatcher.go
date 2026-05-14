@@ -2,6 +2,7 @@ package waffle
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 
@@ -102,22 +103,35 @@ func (d *memoryDispatcher) Shutdown(ctx context.Context) error {
 
 func (d *memoryDispatcher) work() {
 	for job := range d.jobs {
-		if err := job.handler.handle(job.ctx, job.event); err != nil {
-			if log := d.log(job.ctx); log != nil {
-				log.ErrorContext(job.ctx, "handler failed",
-					"handler", job.handler.name,
-					"event_type", job.event.Type(),
-					"event_id", job.event.ID(),
-					"err", err,
-				)
-			}
-			if d.errorHook != nil {
-				d.errorHook(job.ctx, job.event, job.handler.name, err)
-			}
-		}
-
-		d.pending.Done()
+		d.run(job)
 	}
+}
+
+func (d *memoryDispatcher) run(job job) {
+	defer d.pending.Done()
+
+	if err := d.callHandler(job); err != nil {
+		if log := d.log(job.ctx); log != nil {
+			log.ErrorContext(job.ctx, "handler failed",
+				"handler", job.handler.name,
+				"event_type", job.event.Type(),
+				"event_id", job.event.ID(),
+				"err", err,
+			)
+		}
+		if d.errorHook != nil {
+			d.errorHook(job.ctx, job.event, job.handler.name, err)
+		}
+	}
+}
+
+func (d *memoryDispatcher) callHandler(job job) (err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			err = fmt.Errorf("handler panicked: %v", v)
+		}
+	}()
+	return job.handler.handle(job.ctx, job.event)
 }
 
 func (d *memoryDispatcher) log(context.Context) *slog.Logger {
