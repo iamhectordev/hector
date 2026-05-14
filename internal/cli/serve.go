@@ -9,6 +9,7 @@ import (
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -66,9 +67,23 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
+	toolsModule, err := tools.NewModule(bus, tools.TimeNow{})
+	if err != nil {
+		return err
+	}
+
+	catalog := agent.NewCatalog(
+		comms.NewReplyRouter(slackModule.NewReplyHandler()),
+		tools.TimeNow{},
+	)
+	loop := agent.NewLoop(completer,
+		agent.WithCatalog(catalog),
+		agent.WithSystem(agent.SystemPrompt),
+	)
+
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(completer, agent.WithCatalog(agent.NewCatalog(tools.TimeNow{})))),
-		tools.NewModule(bus, tools.TimeNow{}),
+		agent.NewModule(bus, loop),
+		toolsModule,
 		slackModule,
 	},
 		supervisor.WithLogger(logger),

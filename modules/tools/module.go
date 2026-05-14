@@ -16,16 +16,18 @@ type Module struct {
 	logger *slog.Logger
 }
 
-func NewModule(bus *waffle.EventBus, tools ...Tool) *Module {
+func NewModule(bus *waffle.EventBus, tools ...Tool) (*Module, error) {
 	m := &Module{
 		bus:    bus,
 		tools:  make(map[string]Tool, len(tools)),
 		logger: slog.Default().With("component", "module", "module", "tools"),
 	}
 	for _, tool := range tools {
-		m.Register(tool)
+		if err := m.Register(tool); err != nil {
+			return nil, err
+		}
 	}
-	return m
+	return m, nil
 }
 
 func (m *Module) Name() string { return "tools" }
@@ -47,12 +49,28 @@ func (m *Module) Start(ctx context.Context) error {
 
 func (m *Module) Stop(context.Context) error { return nil }
 
-func (m *Module) Register(tool Tool) {
+func (m *Module) Register(tool Tool) error {
 	if tool == nil {
-		return
+		return nil
 	}
 	def := tool.Definition()
+
+	if def.Name == "" {
+		return fmt.Errorf("tools: cannot register tool with empty name")
+	}
+	if def.Description == "" {
+		return fmt.Errorf("tools: tool %q has empty description", def.Name)
+	}
+	if def.Parameters == nil {
+		return fmt.Errorf("tools: tool %q has nil parameters", def.Name)
+	}
+
+	if _, exists := m.tools[def.Name]; exists {
+		return fmt.Errorf("tools: duplicate tool name %q", def.Name)
+	}
+
 	m.tools[def.Name] = tool
+	return nil
 }
 
 func (m *Module) onCallRequested(ctx context.Context, e waffle.Event[CallRequestedData]) error {

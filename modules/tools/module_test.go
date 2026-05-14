@@ -17,7 +17,8 @@ func TestModuleEmitsCallCompleted(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	module := tools.NewModule(bus, echoTool{})
+	module, err := tools.NewModule(bus, echoTool{})
+	require.NoError(t, err)
 	require.NoError(t, module.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
@@ -40,7 +41,8 @@ func TestModuleEmitsErrorForUnknownTool(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	module := tools.NewModule(bus)
+	module, err := tools.NewModule(bus)
+	require.NoError(t, err)
 	require.NoError(t, module.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
@@ -63,7 +65,8 @@ func TestModuleEmitsErrorForToolFailure(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	module := tools.NewModule(bus, failingTool{})
+	module, err := tools.NewModule(bus, failingTool{})
+	require.NoError(t, err)
 	require.NoError(t, module.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
@@ -122,4 +125,56 @@ func (failingTool) Definition() tools.Definition {
 
 func (failingTool) Run(context.Context, json.RawMessage) (string, error) {
 	return "", errors.New("tool failed")
+}
+
+func TestModuleRejectsToolWithEmptyName(t *testing.T) {
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	_, err = tools.NewModule(bus, badTool{name: ""})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty name")
+}
+
+func TestModuleRejectsToolWithEmptyDescription(t *testing.T) {
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	_, err = tools.NewModule(bus, badTool{name: "test", description: ""})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "empty description")
+}
+
+func TestModuleRejectsToolWithNilParameters(t *testing.T) {
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	_, err = tools.NewModule(bus, badTool{name: "test", description: "desc", parameters: nil})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "nil parameters")
+}
+
+func TestModuleRejectsDuplicateToolNames(t *testing.T) {
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	tool1 := echoTool{}
+	tool2 := echoTool{}
+	_, err = tools.NewModule(bus, tool1, tool2)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate")
+}
+
+type badTool struct {
+	name        string
+	description string
+	parameters  json.RawMessage
+}
+
+func (b badTool) Definition() tools.Definition {
+	return tools.Definition{
+		Name:        b.name,
+		Description: b.description,
+		Parameters:  b.parameters,
+	}
+}
+
+func (badTool) Run(context.Context, json.RawMessage) (string, error) {
+	return "", nil
 }
