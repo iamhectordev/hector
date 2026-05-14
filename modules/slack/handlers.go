@@ -8,6 +8,8 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+
+	"github.com/iamhectordev/hector/pkg/session"
 )
 
 func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
@@ -66,6 +68,7 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	if !ok {
 		return nil
 	}
+	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(data.Origin.ChannelID, data.Origin.ThreadTS)})
 	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
 	if err := m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)

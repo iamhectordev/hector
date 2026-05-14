@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -60,7 +61,8 @@ func (m *Module) inputLoop(ctx context.Context) {
 	scanner := bufio.NewScanner(m.in)
 	for scanner.Scan() {
 		text := scanner.Text()
-		if err := m.bus.Record(ctx, MessageReceived.New(MessageReceivedData{Text: text})); err != nil {
+		eventCtx := session.With(ctx, session.Session{SourceURI: NewOriginURI()})
+		if err := m.bus.Record(eventCtx, MessageReceived.New(MessageReceivedData{Text: text})); err != nil {
 			m.log(ctx).ErrorContext(ctx, "failed to record tui message", "err", err)
 			return
 		}

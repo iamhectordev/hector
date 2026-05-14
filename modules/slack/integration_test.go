@@ -57,7 +57,7 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, "D111", data.ChannelID)
+		require.Equal(t, "D111", data.Origin.ChannelID)
 		require.Equal(t, "U222", data.SenderID)
 		require.Equal(t, "hello from dm", data.Text)
 	case <-time.After(3 * time.Second):

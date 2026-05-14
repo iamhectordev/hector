@@ -9,9 +9,15 @@ import (
 // MessageReceived is emitted when a Slack direct message is received.
 var MessageReceived = mustDefine[MessageReceivedData]("slack.message_received", 1)
 
+// Origin identifies where a Slack message came from.
+type Origin struct {
+	ChannelID string
+	ThreadTS  string // non-empty when the message is part of a thread
+}
+
 // MessageReceivedData is the payload for [MessageReceived].
 type MessageReceivedData struct {
-	ChannelID  string
+	Origin     Origin
 	SenderID   string
 	Text       string
 	SentAt     time.Time

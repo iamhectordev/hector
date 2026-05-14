@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/url"
 	"os"
+
+	"github.com/iamhectordev/hector/pkg/session"
 )
 
 // ReplyHandler implements comms.ReplyHandler for the TUI surface.
@@ -18,6 +20,9 @@ func NewReplyHandler(out io.Writer) *ReplyHandler {
 	}
 	return &ReplyHandler{out: out}
 }
+
+// NewOriginURI returns the fixed origin URI for the TUI surface.
+func NewOriginURI() string { return session.NewSourceURI("tui", "stdout", "") }
 
 func (h *ReplyHandler) Scheme() string { return "tui" }
 

@@ -23,7 +23,7 @@ func messageReceivedData(now time.Time, e *slackevents.MessageEvent) (MessageRec
 	}
 
 	return MessageReceivedData{
-		ChannelID:  e.Channel,
+		Origin:     Origin{ChannelID: e.Channel, ThreadTS: e.ThreadTimeStamp},
 		SenderID:   e.User,
 		Text:       e.Text,
 		SentAt:     sentAt,

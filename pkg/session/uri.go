@@ -8,7 +8,11 @@ import (
 // NewSourceURI constructs a source URI from its parts.
 // Example: NewSourceURI("slack", "channels", "D1234ABC") → "slack://channels/D1234ABC"
 func NewSourceURI(scheme, host, path string) string {
-	return (&url.URL{Scheme: scheme, Host: host, Path: "/" + path}).String()
+	u := &url.URL{Scheme: scheme, Host: host}
+	if path != "" {
+		u.Path = "/" + path
+	}
+	return u.String()
 }
 
 // ParseSourceURI parses a source URI, requiring a non-empty scheme.
