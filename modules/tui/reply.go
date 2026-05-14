@@ -1,0 +1,27 @@
+package tui
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"net/url"
+	"os"
+)
+
+// ReplyHandler implements comms.ReplyHandler for the TUI surface.
+type ReplyHandler struct{ out io.Writer }
+
+// NewReplyHandler returns a handler that writes replies to out, defaulting to stdout.
+func NewReplyHandler(out io.Writer) *ReplyHandler {
+	if out == nil {
+		out = os.Stdout
+	}
+	return &ReplyHandler{out: out}
+}
+
+func (h *ReplyHandler) Scheme() string { return "tui" }
+
+func (h *ReplyHandler) Reply(_ context.Context, _ *url.URL, text string) error {
+	_, err := fmt.Fprintln(h.out, text)
+	return err
+}

@@ -18,6 +18,7 @@ type Module struct {
 	botToken string
 	apiURL   string
 	logger   *slog.Logger
+	api      *slackgo.Client
 	client   *socketmode.Client
 }
 
@@ -52,6 +53,7 @@ func (m *Module) Init(ctx context.Context) error {
 		return fmt.Errorf("slack: auth test: %w", err)
 	}
 	m.log(ctx).InfoContext(ctx, "slack auth verified", "team_id", auth.TeamID, "user_id", auth.UserID)
+	m.api = api
 	m.client = socketmode.New(api)
 	return nil
 }
