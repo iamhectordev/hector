@@ -23,7 +23,8 @@ func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Clien
 	case socketmode.EventTypeInvalidAuth:
 		return fmt.Errorf("slack: socket mode invalid auth")
 	case socketmode.EventTypeIncomingError:
-		return incomingError(evt)
+		m.log(ctx).WarnContext(ctx, "slack socket incoming error", "err", incomingError(evt))
+		return nil
 	case socketmode.EventTypeErrorBadMessage:
 		return badMessageError(evt)
 	case socketmode.EventTypeErrorWriteFailed:
