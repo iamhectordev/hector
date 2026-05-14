@@ -13,10 +13,10 @@ import (
 func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
 	switch evt.Type {
 	case socketmode.EventTypeConnecting:
-		m.log(ctx).InfoContext(ctx, "slack socket connecting")
+		m.log(ctx).DebugContext(ctx, "slack socket connecting")
 		return nil
 	case socketmode.EventTypeConnected:
-		m.log(ctx).InfoContext(ctx, "slack socket connected")
+		m.log(ctx).DebugContext(ctx, "slack socket connected")
 		return nil
 	case socketmode.EventTypeConnectionError:
 		return m.handleConnectionError(ctx, evt)
@@ -68,7 +68,7 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	}
 	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
 	if err := m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
-		return fmt.Errorf("slack: record message received: %w", err)
+		return fmt.Errorf("failed to record message received: %w", err)
 	}
 	return nil
 }
