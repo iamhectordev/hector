@@ -30,7 +30,7 @@ func TestMessageReceivedData(t *testing.T) {
 				ChannelType: slackevents.ChannelTypeIM,
 			},
 			want: MessageReceivedData{
-				Origin:     Origin{ChannelID: "D024BE91L"},
+				Origin:     Origin{ChannelID: "D024BE91L", ThreadTS: "1355517523.000005"},
 				SenderID:   "U2147483697",
 				Text:       "hello",
 				SentAt:     sentAt,

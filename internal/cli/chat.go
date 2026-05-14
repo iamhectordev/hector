@@ -3,8 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
-
 	"os"
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
@@ -20,14 +18,21 @@ import (
 
 func chatCommand() *cli.Command {
 	return &cli.Command{
-		Name:   "chat",
-		Usage:  "interactive chat session (Ctrl-C to exit)",
+		Name:  "chat",
+		Usage: "interactive chat session (Ctrl-C to exit)",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "log-level",
+				Value: "info",
+				Usage: "log level (debug, info, warn, error)",
+			},
+		},
 		Action: chatAction,
 	}
 }
 
-func chatAction(ctx context.Context, _ *cli.Command) error {
-	logger := slog.Default().With("command", "chat")
+func chatAction(ctx context.Context, cmd *cli.Command) error {
+	logger := setupLogger(cmd.String("log-level")).With("command", "chat")
 	logger.InfoContext(ctx, "starting chat command")
 
 	cfg, err := configFromContext(ctx)
@@ -69,6 +74,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	loop := agent.NewLoop(completer,
 		agent.WithCatalog(catalog),
 		agent.WithSystem(agent.SystemPrompt),
+		agent.WithLogger(logger.With("component", "loop")),
 	)
 
 	sv, err := supervisor.New([]supervisor.Module{

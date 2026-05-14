@@ -22,8 +22,12 @@ func messageReceivedData(now time.Time, e *slackevents.MessageEvent) (MessageRec
 		return MessageReceivedData{}, false, fmt.Errorf("slack: parse message timestamp: %w", err)
 	}
 
+	threadTS := e.ThreadTimeStamp
+	if threadTS == "" {
+		threadTS = e.TimeStamp
+	}
 	return MessageReceivedData{
-		Origin:     Origin{ChannelID: e.Channel, ThreadTS: e.ThreadTimeStamp},
+		Origin:     Origin{ChannelID: e.Channel, ThreadTS: threadTS},
 		SenderID:   e.User,
 		Text:       e.Text,
 		SentAt:     sentAt,

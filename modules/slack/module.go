@@ -13,13 +13,14 @@ import (
 
 // Module connects to Slack Socket Mode and publishes direct messages on the bus.
 type Module struct {
-	bus      *waffle.EventBus
-	appToken string
-	botToken string
-	apiURL   string
-	logger   *slog.Logger
-	api      *slackgo.Client
-	client   *socketmode.Client
+	bus        *waffle.EventBus
+	appToken   string
+	botToken   string
+	apiURL     string
+	logger     *slog.Logger
+	api        *slackgo.Client
+	client     *socketmode.Client
+	botUserID  string
 }
 
 func NewModule(bus *waffle.EventBus, cfg Config) (*Module, error) {
@@ -52,8 +53,9 @@ func (m *Module) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("slack: auth test: %w", err)
 	}
-	m.log(ctx).InfoContext(ctx, "slack auth verified", "team_id", auth.TeamID, "user_id", auth.UserID)
+	m.log(ctx).InfoContext(ctx, "slack auth verified", "team_id", auth.TeamID, "user_id", auth.UserID, "bot_id", auth.BotID)
 	m.api = api
+	m.botUserID = auth.UserID
 	m.client = socketmode.New(api)
 	return nil
 }

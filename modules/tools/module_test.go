@@ -17,7 +17,9 @@ func TestModuleEmitsCallCompleted(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	module, err := tools.NewModule(bus, echoTool{})
+	registry, err := tools.NewRegistry(echoTool{})
+	require.NoError(t, err)
+	module, err := tools.NewModule(bus, registry)
 	require.NoError(t, err)
 	require.NoError(t, module.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
@@ -41,7 +43,9 @@ func TestModuleEmitsErrorForUnknownTool(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	module, err := tools.NewModule(bus)
+	registry, err := tools.NewRegistry()
+	require.NoError(t, err)
+	module, err := tools.NewModule(bus, registry)
 	require.NoError(t, err)
 	require.NoError(t, module.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
@@ -65,7 +69,9 @@ func TestModuleEmitsErrorForToolFailure(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	module, err := tools.NewModule(bus, failingTool{})
+	registry, err := tools.NewRegistry(failingTool{})
+	require.NoError(t, err)
+	module, err := tools.NewModule(bus, registry)
 	require.NoError(t, err)
 	require.NoError(t, module.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
@@ -127,36 +133,35 @@ func (failingTool) Run(context.Context, json.RawMessage) (string, error) {
 	return "", errors.New("tool failed")
 }
 
-func TestModuleRejectsToolWithEmptyName(t *testing.T) {
+func TestModuleRejectsNilRegistry(t *testing.T) {
 	bus, err := waffle.NewEventBus()
 	require.NoError(t, err)
-	_, err = tools.NewModule(bus, badTool{name: ""})
+	_, err = tools.NewModule(bus, nil)
+	require.ErrorIs(t, err, tools.ErrNilRegistry)
+}
+
+func TestRegistryRejectsToolWithEmptyName(t *testing.T) {
+	_, err := tools.NewRegistry(badTool{name: ""})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty name")
 }
 
-func TestModuleRejectsToolWithEmptyDescription(t *testing.T) {
-	bus, err := waffle.NewEventBus()
-	require.NoError(t, err)
-	_, err = tools.NewModule(bus, badTool{name: "test", description: ""})
+func TestRegistryRejectsToolWithEmptyDescription(t *testing.T) {
+	_, err := tools.NewRegistry(badTool{name: "test", description: ""})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty description")
 }
 
-func TestModuleRejectsToolWithNilParameters(t *testing.T) {
-	bus, err := waffle.NewEventBus()
-	require.NoError(t, err)
-	_, err = tools.NewModule(bus, badTool{name: "test", description: "desc", parameters: nil})
+func TestRegistryRejectsToolWithNilParameters(t *testing.T) {
+	_, err := tools.NewRegistry(badTool{name: "test", description: "desc", parameters: nil})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nil parameters")
 }
 
-func TestModuleRejectsDuplicateToolNames(t *testing.T) {
-	bus, err := waffle.NewEventBus()
-	require.NoError(t, err)
+func TestRegistryRejectsDuplicateToolNames(t *testing.T) {
 	tool1 := echoTool{}
 	tool2 := echoTool{}
-	_, err = tools.NewModule(bus, tool1, tool2)
+	_, err := tools.NewRegistry(tool1, tool2)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate")
 }

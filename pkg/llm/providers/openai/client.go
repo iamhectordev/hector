@@ -81,9 +81,17 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 		return nil, fmt.Errorf("llm: no choices returned")
 	}
 
-	msg := completion.Choices[0].Message
-	reply := schema.AssistantMessage(msg.Content)
-	for _, call := range msg.ToolCalls {
+	choice := completion.Choices[0]
+	reply := schema.AssistantMessage(choice.Message.Content)
+	switch choice.FinishReason {
+	case "stop":
+		reply.FinishReason = schema.FinishReasonStop
+	case "tool_calls":
+		reply.FinishReason = schema.FinishReasonToolCalls
+	case "length":
+		reply.FinishReason = schema.FinishReasonLength
+	}
+	for _, call := range choice.Message.ToolCalls {
 		name := call.Function.Name
 		if original, ok := toolNames.fromOpenAI[name]; ok {
 			name = original

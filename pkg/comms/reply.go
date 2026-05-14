@@ -77,5 +77,8 @@ func (r *ReplyRouter) Run(ctx context.Context, args json.RawMessage) (string, er
 		return "", fmt.Errorf("comms: reply: no handler for scheme %q", uri.Scheme)
 	}
 
-	return "", h.Reply(ctx, uri, input.Text)
+	if err := h.Reply(ctx, uri, input.Text); err != nil {
+		return "", err
+	}
+	return "sent", nil
 }

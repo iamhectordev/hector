@@ -10,12 +10,22 @@ const (
 	RoleTool      Role = "tool"
 )
 
+// FinishReason is why the model stopped generating.
+type FinishReason string
+
+const (
+	FinishReasonStop      FinishReason = "stop"
+	FinishReasonToolCalls FinishReason = "tool_calls"
+	FinishReasonLength    FinishReason = "length"
+)
+
 // Message is one turn in a model-facing conversation.
 type Message struct {
-	Role       Role
-	Content    string
-	ToolCalls  []ToolCall
-	ToolCallID string
+	Role         Role
+	Content      string
+	ToolCalls    []ToolCall
+	ToolCallID   string
+	FinishReason FinishReason
 }
 
 // SystemMessage returns a system-role message.

@@ -66,7 +66,9 @@ func TestCompleter_Complete_MapsMessagesAndReturnsAssistantReply(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, schema.AssistantMessage("hello back"), reply)
+	want := schema.AssistantMessage("hello back")
+	want.FinishReason = schema.FinishReasonStop
+	require.Equal(t, want, reply)
 
 	require.Equal(t, defaultModel, got.Model)
 	require.Len(t, got.Messages, 2)
@@ -213,7 +215,8 @@ func TestCompleter_Complete_MapsToolsAndToolCalls(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, &schema.Message{
-		Role: schema.RoleAssistant,
+		Role:         schema.RoleAssistant,
+		FinishReason: schema.FinishReasonToolCalls,
 		ToolCalls: []schema.ToolCall{
 			{ID: "call_123", Name: "time.now", Arguments: json.RawMessage(`{}`)},
 		},

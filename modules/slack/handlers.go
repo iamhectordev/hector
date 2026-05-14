@@ -13,6 +13,7 @@ import (
 )
 
 func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
+	m.log(ctx).DebugContext(ctx, "slack socket event", "type", evt.Type)
 	switch evt.Type {
 	case socketmode.EventTypeConnecting:
 		m.log(ctx).DebugContext(ctx, "slack socket connecting")
@@ -45,6 +46,8 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 		return fmt.Errorf("slack: expected EventsAPIEvent, got %T", evt.Data)
 	}
 
+	m.log(ctx).DebugContext(ctx, "slack api event", "type", apiEvent.Type, "inner_type", apiEvent.InnerEvent.Type)
+
 	if apiEvent.Type != slackevents.CallbackEvent {
 		return ackSocketEvent(ctx, client, evt)
 	}
@@ -61,6 +64,11 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 }
 
 func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent) error {
+	m.log(ctx).DebugContext(ctx, "slack message event", "user", e.User, "channel", e.Channel, "subtype", e.SubType, "thread_ts", e.ThreadTimeStamp, "ts", e.TimeStamp)
+	if e.User == m.botUserID {
+		m.log(ctx).DebugContext(ctx, "slack message ignored: bot self-message", "user", e.User)
+		return nil
+	}
 	data, ok, err := messageReceivedData(time.Now().UTC(), e)
 	if err != nil {
 		return err

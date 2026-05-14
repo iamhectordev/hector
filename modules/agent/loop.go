@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
@@ -14,11 +15,12 @@ type Runner interface {
 }
 
 // Loop runs the agent turn: calls the model, executes any tool calls, and repeats
-// until the model calls 'reply' or returns a plain text response.
+// until the model stops or returns a plain text response.
 type Loop struct {
 	completer llm.Completer
 	catalog   *Catalog
 	system    string
+	log       *slog.Logger
 }
 
 // LoopOption configures a Loop.
@@ -34,8 +36,13 @@ func WithSystem(prompt string) LoopOption {
 	return func(l *Loop) { l.system = prompt }
 }
 
+// WithLogger sets the logger used for debug output.
+func WithLogger(logger *slog.Logger) LoopOption {
+	return func(l *Loop) { l.log = logger }
+}
+
 func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
-	l := &Loop{completer: c}
+	l := &Loop{completer: c, log: slog.Default()}
 	for _, opt := range opts {
 		opt(l)
 	}
@@ -56,24 +63,24 @@ func (l *Loop) Run(ctx context.Context, messages []*schema.Message) (*schema.Mes
 		if reply == nil {
 			return nil, fmt.Errorf("llm: nil reply")
 		}
-		if len(reply.ToolCalls) == 0 {
+		switch reply.FinishReason {
+		case schema.FinishReasonStop:
 			return reply, nil
-		}
-
-		messages = append(messages, reply)
-		replied := false
-		for _, call := range reply.ToolCalls {
-			output, err := l.catalog.Execute(ctx, call.Name, call.Arguments)
-			if err != nil {
-				output = fmt.Sprintf("error: %s", err)
+		case schema.FinishReasonToolCalls:
+			messages = append(messages, reply)
+			for _, call := range reply.ToolCalls {
+				l.log.DebugContext(ctx, "tool call", "tool", call.Name, "args", string(call.Arguments))
+				output, execErr := l.catalog.Execute(ctx, call.Name, call.Arguments)
+				if execErr != nil {
+					l.log.DebugContext(ctx, "tool error", "tool", call.Name, "error", execErr)
+					output = fmt.Sprintf("error: %s", execErr)
+				} else {
+					l.log.DebugContext(ctx, "tool result", "tool", call.Name, "output", output)
+				}
+				messages = append(messages, schema.ToolResultMessage(call.ID, output))
 			}
-			messages = append(messages, schema.ToolResultMessage(call.ID, output))
-			if call.Name == "reply" {
-				replied = true
-			}
-		}
-		if replied {
-			return nil, nil
+		default:
+			return nil, fmt.Errorf("llm: unexpected finish reason %q", reply.FinishReason)
 		}
 	}
 }

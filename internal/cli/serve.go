@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
@@ -19,14 +20,21 @@ import (
 
 func serveCommand() *cli.Command {
 	return &cli.Command{
-		Name:   "serve",
-		Usage:  "run Slack bot (Socket Mode)",
+		Name:  "serve",
+		Usage: "run Slack bot (Socket Mode)",
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "log-level",
+				Value: "info",
+				Usage: "log level (debug, info, warn, error)",
+			},
+		},
 		Action: serveAction,
 	}
 }
 
-func serveAction(ctx context.Context, _ *cli.Command) error {
-	logger := slog.Default().With("command", "serve")
+func serveAction(ctx context.Context, cmd *cli.Command) error {
+	logger := setupLogger(cmd.String("log-level")).With("command", "serve")
 	logger.InfoContext(ctx, "starting serve command")
 
 	cfg, err := configFromContext(ctx)
@@ -67,7 +75,11 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
-	toolsModule, err := tools.NewModule(bus, tools.TimeNow{})
+	toolRegistry, err := tools.NewRegistry(tools.TimeNow{})
+	if err != nil {
+		return err
+	}
+	toolsModule, err := tools.NewModule(bus, toolRegistry)
 	if err != nil {
 		return err
 	}
@@ -79,6 +91,7 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	loop := agent.NewLoop(completer,
 		agent.WithCatalog(catalog),
 		agent.WithSystem(agent.SystemPrompt),
+		agent.WithLogger(logger.With("component", "loop")),
 	)
 
 	sv, err := supervisor.New([]supervisor.Module{
@@ -103,4 +116,22 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		"signal", rep.Signal,
 	)
 	return rep.Err()
+}
+
+func setupLogger(level string) *slog.Logger {
+	var l slog.Level
+	switch level {
+	case "debug":
+		l = slog.LevelDebug
+	case "warn":
+		l = slog.LevelWarn
+	case "error":
+		l = slog.LevelError
+	default:
+		l = slog.LevelInfo
+	}
+	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: l})
+	logger := slog.New(h)
+	slog.SetDefault(logger)
+	return logger
 }
