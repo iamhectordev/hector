@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"os"
+
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -60,8 +63,16 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
+	catalog := agent.NewCatalog(
+		comms.NewReplyRouter(tui.NewReplyHandler(os.Stdout)),
+	)
+	loop := agent.NewLoop(completer,
+		agent.WithCatalog(catalog),
+		agent.WithSystem(agent.SystemPrompt),
+	)
+
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(completer)),
+		agent.NewModule(bus, loop),
 		tui.NewModule(bus),
 	},
 		supervisor.WithLogger(logger),

@@ -13,6 +13,7 @@ Read more:
 - Golden paths: flow/paths/
 
 ## Go API Design
+- Use errors, not panic.
 - Functions must not receive `nil`, `""`, or `0` to mean "no value" or "disabled".
 - Optional behaviour: use the `With*` functional options pattern.
 - Required dependencies: prefer an interface; never accept a concrete pointer that callers pass as `nil`.

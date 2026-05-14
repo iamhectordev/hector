@@ -6,8 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-
-	"github.com/sourcegraph/conc"
 )
 
 // ErrClosed is returned when recording to a shut down bus.
@@ -24,18 +22,16 @@ type ErrorHook func(ctx context.Context, event AnyEvent, handlerName string, err
 
 // EventBus records events and dispatches matching handlers asynchronously.
 type EventBus struct {
-	mu        sync.Mutex
-	stateMu   sync.RWMutex
-	pending   sync.WaitGroup
-	workers   int
-	workerWG  conc.WaitGroup
-	logger    *slog.Logger
-	store     Store
-	errorHook ErrorHook
+	mu         sync.Mutex
+	stateMu    sync.RWMutex
+	workers    int
+	logger     *slog.Logger
+	store      Store
+	errorHook  ErrorHook
+	dispatcher dispatcher
 
 	started  bool
 	closed   bool
-	jobs     chan job
 	handlers map[string][]registeredHandler
 }
 
@@ -56,6 +52,7 @@ func NewEventBus(options ...Option) (*EventBus, error) {
 		}
 	}
 
+	bus.dispatcher = newMemoryDispatcher(bus.workers, bus.logger, bus.errorHook)
 	return bus, nil
 }
 
@@ -101,21 +98,7 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 	handlers := append([]registeredHandler(nil), b.handlers[event.Type()]...)
 	b.mu.Unlock()
 
-	for _, handler := range handlers {
-		b.pending.Add(1)
-
-		select {
-		case b.jobs <- job{ctx: ctx, event: event, handler: handler}:
-		case <-ctx.Done():
-			b.pending.Done()
-			if log := b.log(ctx); log != nil {
-				log.ErrorContext(ctx, "record canceled while queueing handler", "event_type", event.Type(), "err", ctx.Err())
-			}
-			return ctx.Err()
-		}
-	}
-
-	return nil
+	return b.dispatcher.Dispatch(ctx, event, handlers)
 }
 
 func eventRecord(event AnyEvent) (EventRecord, error) {
@@ -154,45 +137,32 @@ func (b *EventBus) Start(ctx context.Context) error {
 		return nil
 	}
 
-	b.jobs = make(chan job, b.workers*64)
-	b.start()
-	b.started = true
-	if log := b.log(ctx); log != nil {
-		log.InfoContext(ctx, "event bus started", "workers", b.workers)
+	if err := b.dispatcher.Start(ctx); err != nil {
+		return err
 	}
+	b.started = true
 	return nil
 }
 
 // Drain waits until all queued and running handlers finish.
 func (b *EventBus) Drain(ctx context.Context) error {
-	if err := waitContext(ctx, b.pending.Wait); err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "drain canceled", "err", err)
-		}
-		return err
-	}
-	return nil
+	return b.dispatcher.Drain(ctx)
 }
 
 // Shutdown stops accepting events and waits for workers to exit.
 func (b *EventBus) Shutdown(ctx context.Context) error {
 	b.stateMu.Lock()
+	wasStarted := b.started
 	if !b.closed {
 		b.closed = true
-		if b.started {
-			close(b.jobs)
-		}
 		if log := b.log(ctx); log != nil {
 			log.InfoContext(ctx, "event bus shutting down")
 		}
 	}
 	b.stateMu.Unlock()
 
-	if err := waitContext(ctx, b.workerWG.Wait); err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "shutdown canceled", "err", err)
-		}
-		return err
+	if wasStarted {
+		return b.dispatcher.Shutdown(ctx)
 	}
 	return nil
 }
@@ -204,51 +174,6 @@ func (b *EventBus) register(eventType string, handler registeredHandler) {
 	b.handlers[eventType] = append(b.handlers[eventType], handler)
 }
 
-func (b *EventBus) start() {
-	for range b.workers {
-		b.workerWG.Go(func() {
-			for job := range b.jobs {
-				if err := job.handler.handle(job.ctx, job.event); err != nil {
-					if log := b.log(job.ctx); log != nil {
-						log.ErrorContext(job.ctx, "handler failed",
-							"handler", job.handler.name,
-							"event_type", job.event.Type(),
-							"event_id", job.event.ID(),
-							"err", err,
-						)
-					}
-					if b.errorHook != nil {
-						b.errorHook(job.ctx, job.event, job.handler.name, err)
-					}
-				}
-
-				b.pending.Done()
-			}
-		})
-	}
-}
-
 func (b *EventBus) log(context.Context) *slog.Logger {
 	return b.logger
-}
-
-type job struct {
-	ctx     context.Context
-	event   AnyEvent
-	handler registeredHandler
-}
-
-func waitContext(ctx context.Context, wait func()) error {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		wait()
-	}()
-
-	select {
-	case <-done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
 }

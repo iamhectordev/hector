@@ -33,7 +33,7 @@ func (b Binding[T]) Handle(name string, handler Handler[T]) error {
 
 	b.bus.register(b.def.Type(), registeredHandler{
 		name: name,
-		handle: func(ctx context.Context, raw any) error {
+		handle: func(ctx context.Context, raw AnyEvent) error {
 			event, ok := raw.(Event[T])
 			if !ok {
 				return fmt.Errorf("waffle: handler %q received event with unexpected payload type", name)
@@ -48,5 +48,5 @@ func (b Binding[T]) Handle(name string, handler Handler[T]) error {
 
 type registeredHandler struct {
 	name   string
-	handle func(context.Context, any) error
+	handle func(context.Context, AnyEvent) error
 }

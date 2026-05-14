@@ -20,9 +20,15 @@ type ReplyHandler struct {
 	replier slackReplier
 }
 
-// NewReplyHandler returns a handler backed by the module's API client.
-// Must be called after Init.
-func (m *Module) NewReplyHandler() *ReplyHandler { return &ReplyHandler{replier: m.api} }
+// PostMessageContext forwards to the API client, satisfying slackReplier.
+// The module is used as a lazy proxy so ReplyHandler can be constructed before Init.
+func (m *Module) PostMessageContext(ctx context.Context, channelID string, options ...slackgo.MsgOption) (string, string, error) {
+	return m.api.PostMessageContext(ctx, channelID, options...)
+}
+
+// NewReplyHandler returns a ReplyHandler backed by this module.
+// Safe to call before Init — the module proxies to m.api at call time.
+func (m *Module) NewReplyHandler() *ReplyHandler { return &ReplyHandler{replier: m} }
 
 func (h *ReplyHandler) Scheme() string { return "slack" }
 

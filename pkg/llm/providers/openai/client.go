@@ -39,7 +39,10 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 		return nil, err
 	}
 
-	params := make([]sdkopenai.ChatCompletionMessageParamUnion, 0, len(req.Messages))
+	params := make([]sdkopenai.ChatCompletionMessageParamUnion, 0, len(req.Messages)+1)
+	if req.System != "" {
+		params = append(params, sdkopenai.SystemMessage(req.System))
+	}
 	for _, msg := range req.Messages {
 		if msg == nil {
 			continue
