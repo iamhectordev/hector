@@ -3,9 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 
+	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
@@ -22,19 +21,12 @@ func serveCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "serve",
 		Usage: "run Slack bot (Socket Mode)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "log-level",
-				Value: "info",
-				Usage: "log level (debug, info, warn, error)",
-			},
-		},
 		Action: serveAction,
 	}
 }
 
-func serveAction(ctx context.Context, cmd *cli.Command) error {
-	logger := setupLogger(cmd.String("log-level")).With("command", "serve")
+func serveAction(ctx context.Context, _ *cli.Command) error {
+	logger := kleelog.FromCtx(ctx).With("command", "serve")
 	logger.InfoContext(ctx, "starting serve command")
 
 	cfg, err := configFromContext(ctx)
@@ -116,22 +108,4 @@ func serveAction(ctx context.Context, cmd *cli.Command) error {
 		"signal", rep.Signal,
 	)
 	return rep.Err()
-}
-
-func setupLogger(level string) *slog.Logger {
-	var l slog.Level
-	switch level {
-	case "debug":
-		l = slog.LevelDebug
-	case "warn":
-		l = slog.LevelWarn
-	case "error":
-		l = slog.LevelError
-	default:
-		l = slog.LevelInfo
-	}
-	h := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: l})
-	logger := slog.New(h)
-	slog.SetDefault(logger)
-	return logger
 }

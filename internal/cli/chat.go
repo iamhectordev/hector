@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tools"
@@ -21,19 +22,12 @@ func chatCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "chat",
 		Usage: "interactive chat session (Ctrl-C to exit)",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:  "log-level",
-				Value: "info",
-				Usage: "log level (debug, info, warn, error)",
-			},
-		},
 		Action: chatAction,
 	}
 }
 
-func chatAction(ctx context.Context, cmd *cli.Command) error {
-	logger := setupLogger(cmd.String("log-level")).With("command", "chat")
+func chatAction(ctx context.Context, _ *cli.Command) error {
+	logger := kleelog.FromCtx(ctx).With("command", "chat")
 	logger.InfoContext(ctx, "starting chat command")
 
 	cfg, err := configFromContext(ctx)
