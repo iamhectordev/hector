@@ -1,6 +1,6 @@
 - slug: presence
   title: Presence
-  description: How Hector shows up, communicates, and reads the room
+  description: How Hector shows up — tone, timing, and initiative as experienced by people
   status: open
   priority: P0
   open_questions: []
@@ -45,6 +45,47 @@
       stories:
         - Hector initiates when it has something genuinely useful to contribute
         - Hector never feels like a bot waiting to be commanded
+      open_questions: []
+      children: []
+
+- slug: awareness
+  title: Awareness
+  description: How Hector reads the environment — the platform, the conversation, and the people in it
+  status: open
+  priority: P0
+  open_questions: []
+  children:
+    - slug: awareness.source_context
+      title: Source Context
+      description: Hector knows where a message came from — platform, channel, thread, and conversation type
+      status: idea
+      priority: P0
+      stories:
+        - Hector knows it is in a Slack DM vs a public channel and has that available as context
+        - Hector knows the channel name, channel ID, and thread ID for every message it receives
+        - Hector knows which platform a message came from — Slack, GitHub, JIRA — without being told
+      open_questions: []
+      children: []
+    - slug: awareness.people
+      title: People Awareness
+      description: Hector knows who it is talking to and uses that to ground its responses
+      status: idea
+      priority: P0
+      stories:
+        - Hector knows the username and display name of whoever sent a message
+        - Hector knows when it is talking to someone for the first time vs a returning user
+        - Hector understands a person's role and adjusts how it communicates accordingly
+      open_questions: []
+      children: []
+    - slug: awareness.entity_recognition
+      title: Entity Recognition
+      description: Hector resolves terms, repos, and names from accumulated knowledge
+      status: idea
+      priority: P0
+      stories:
+        - When I mention a term Hector has learned, it understands without me explaining
+        - When I mention a repo by nickname, Hector resolves which one without asking
+        - When I mention a person, Hector knows their role and has prior context on them
       open_questions: []
       children: []
 
@@ -101,33 +142,11 @@
 
 - slug: mem
   title: Memory
-  description: How Hector builds and retrieves knowledge about systems, people, and past events
+  description: How Hector retains and recalls knowledge across time and conversations
   status: open
   priority: P0
   open_questions: []
   children:
-    - slug: mem.entity_recognition
-      title: Entity Recognition
-      description: Hector resolves terms, people, and projects from accumulated knowledge
-      status: idea
-      priority: P0
-      stories:
-        - When I mention a term Hector has learned, it understands without me explaining
-        - When I mention a repo by nickname, Hector resolves which one without asking
-        - When I mention a person, Hector knows their role and has prior context on them
-      open_questions: []
-      children: []
-    - slug: mem.people_awareness
-      title: People Awareness
-      description: Hector knows who it is talking to and accumulates experience with people over time
-      status: idea
-      priority: P0
-      stories:
-        - Hector knows when it is talking to someone for the first time
-        - Hector records experiences with people and uses them to calibrate future interactions
-        - Hector understands a person's role and adjusts how it communicates accordingly
-      open_questions: []
-      children: []
     - slug: mem.episodic_recall
       title: Episodic Recall
       description: Hector recognizes patterns across time and surfaces relevant past context
