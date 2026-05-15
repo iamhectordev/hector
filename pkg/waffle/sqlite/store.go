@@ -162,6 +162,36 @@ func scanReaction(row reactionScanner) (waffle.ReactionRecord, error) {
 	return reaction, nil
 }
 
+// ResetRunningReactions returns in-flight reactions to pending for restart safety.
+func (s *Store) ResetRunningReactions(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE waffle_reactions
+SET status = ?, updated_at = ?
+WHERE status = ?
+`, string(waffle.ReactionPending), time.Now().UTC().Format(time.RFC3339Nano), string(waffle.ReactionRunning))
+	if err != nil {
+		return fmt.Errorf("waffle/sqlite: reset running reactions: %w", err)
+	}
+	return nil
+}
+
+// ClaimReaction moves a pending reaction to running.
+func (s *Store) ClaimReaction(ctx context.Context, id string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `
+UPDATE waffle_reactions
+SET status = ?, updated_at = ?
+WHERE id = ? AND status = ?
+`, string(waffle.ReactionRunning), time.Now().UTC().Format(time.RFC3339Nano), id, string(waffle.ReactionPending))
+	if err != nil {
+		return false, fmt.Errorf("waffle/sqlite: claim reaction: %w", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("waffle/sqlite: claim reaction rows affected: %w", err)
+	}
+	return affected == 1, nil
+}
+
 // MarkReactionSucceeded marks a reaction as successfully handled.
 func (s *Store) MarkReactionSucceeded(ctx context.Context, id string) error {
 	return s.markReaction(ctx, id, waffle.ReactionSucceeded)
@@ -173,13 +203,23 @@ func (s *Store) MarkReactionFailed(ctx context.Context, id string) error {
 }
 
 func (s *Store) markReaction(ctx context.Context, id string, status waffle.ReactionStatus) error {
-	_, err := s.db.ExecContext(ctx, `
+	res, err := s.db.ExecContext(ctx, `
 UPDATE waffle_reactions
 SET status = ?, updated_at = ?
 WHERE id = ?
 `, string(status), time.Now().UTC().Format(time.RFC3339Nano), id)
 	if err != nil {
 		return fmt.Errorf("waffle/sqlite: mark reaction %s: %w", status, err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("waffle/sqlite: mark reaction %s rows affected: %w", status, err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("%w: %s", waffle.ErrReactionNotFound, id)
+	}
+	if affected != 1 {
+		return fmt.Errorf("waffle/sqlite: mark reaction %s affected %d rows", status, affected)
 	}
 	return nil
 }

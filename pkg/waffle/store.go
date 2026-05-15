@@ -9,6 +9,9 @@ import (
 // ErrEventNotFound is returned when no stored event matches the id.
 var ErrEventNotFound = errors.New("waffle: event not found")
 
+// ErrReactionNotFound is returned when no stored reaction matches the id.
+var ErrReactionNotFound = errors.New("waffle: reaction not found")
+
 // EventWriter appends recorded events.
 type EventWriter interface {
 	Append(ctx context.Context, event EventRecord) error
@@ -31,6 +34,7 @@ type ReactionStatus string
 
 const (
 	ReactionPending   ReactionStatus = "pending"
+	ReactionRunning   ReactionStatus = "running"
 	ReactionSucceeded ReactionStatus = "succeeded"
 	ReactionFailed    ReactionStatus = "failed"
 )
@@ -52,6 +56,8 @@ type ReactionStore interface {
 	AppendReactions(ctx context.Context, reactions []ReactionRecord) error
 	RecordEventReactions(ctx context.Context, event EventRecord, reactions []ReactionRecord) error
 	ListPendingReactions(ctx context.Context, limit int) ([]ReactionRecord, error)
+	ResetRunningReactions(ctx context.Context) error
+	ClaimReaction(ctx context.Context, id string) (bool, error)
 	MarkReactionSucceeded(ctx context.Context, id string) error
 	MarkReactionFailed(ctx context.Context, id string) error
 }

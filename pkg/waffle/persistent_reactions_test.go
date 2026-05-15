@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -219,6 +221,190 @@ func TestPersistentReactionOnlyRunsOnceInProcess(t *testing.T) {
 	require.EqualValues(t, 1, calls.Load())
 }
 
+func TestPersistentReactionsConcurrentRecordStress(t *testing.T) {
+	ctx := t.Context()
+	db := openPersistentTestDB(t)
+	store := wafflesqlite.NewStore(db)
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(8),
+		waffle.WithStore(store),
+		waffle.WithPersistentReactions(),
+	)
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.concurrent", 1)
+	require.NoError(t, err)
+
+	const events = 80
+	const handlers = 4
+	var calls atomic.Int32
+	for i := range handlers {
+		name := "test.concurrent." + string(rune('a'+i))
+		err = waffle.On(bus, def).Handle(name, func(context.Context, waffle.Event[testMessage]) error {
+			calls.Add(1)
+			return nil
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, bus.Start(ctx))
+
+	var wg sync.WaitGroup
+	for i := range events {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			require.NoError(t, bus.Record(ctx, def.New(testMessage{Text: string(rune('a' + i%26))})))
+		}(i)
+	}
+	wg.Wait()
+	require.NoError(t, bus.Drain(ctx))
+
+	require.EqualValues(t, events*handlers, calls.Load())
+	requireReactionCounts(t, db, reactionCounts{
+		total:     events * handlers,
+		succeeded: events * handlers,
+	})
+}
+
+func TestPersistentReactionsRestartStress(t *testing.T) {
+	ctx := t.Context()
+	db := openPersistentTestDB(t)
+	store := wafflesqlite.NewStore(db)
+	def, err := waffle.Define[testMessage]("test.restart_stress", 1)
+	require.NoError(t, err)
+
+	const events = 50
+	const handlers = 3
+	now := time.Now().UTC()
+	for i := range events {
+		event := waffle.EventRecord{
+			ID:            "evt_restart_stress_" + stringID(i),
+			Type:          def.Type(),
+			SchemaVersion: def.SchemaVersion(),
+			OccurredAt:    now.Add(time.Duration(i) * time.Millisecond),
+			Payload:       []byte(`{"Text":"resume"}`),
+		}
+		reactions := make([]waffle.ReactionRecord, 0, handlers)
+		for h := range handlers {
+			reactions = append(reactions, waffle.ReactionRecord{
+				ID:          "rxn_restart_stress_" + stringID(i) + "_" + stringID(h),
+				EventID:     event.ID,
+				HandlerName: "test.restart." + stringID(h),
+				Status:      waffle.ReactionPending,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			})
+		}
+		require.NoError(t, store.RecordEventReactions(ctx, event, reactions))
+	}
+
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(6),
+		waffle.WithStore(store),
+		waffle.WithPersistentReactions(),
+	)
+	require.NoError(t, err)
+	var calls atomic.Int32
+	for h := range handlers {
+		err = waffle.On(bus, def).Handle("test.restart."+stringID(h), func(context.Context, waffle.Event[testMessage]) error {
+			calls.Add(1)
+			return nil
+		})
+		require.NoError(t, err)
+	}
+	require.NoError(t, bus.Start(ctx))
+	require.NoError(t, bus.Drain(ctx))
+
+	require.EqualValues(t, events*handlers, calls.Load())
+	requireReactionCounts(t, db, reactionCounts{
+		total:     events * handlers,
+		succeeded: events * handlers,
+	})
+}
+
+func TestPersistentReactionsFailureMixStress(t *testing.T) {
+	ctx := t.Context()
+	db := openPersistentTestDB(t)
+	store := wafflesqlite.NewStore(db)
+	hookCalls := make(chan error, 100)
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(4),
+		waffle.WithStore(store),
+		waffle.WithPersistentReactions(),
+		waffle.WithErrorHook(func(context.Context, waffle.AnyEvent, string, error) {
+			hookCalls <- errors.New("called")
+		}),
+	)
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.failure_mix", 1)
+	require.NoError(t, err)
+
+	err = waffle.On(bus, def).Handle("test.ok", func(context.Context, waffle.Event[testMessage]) error {
+		return nil
+	})
+	require.NoError(t, err)
+	err = waffle.On(bus, def).Handle("test.fail", func(context.Context, waffle.Event[testMessage]) error {
+		return errors.New("failed")
+	})
+	require.NoError(t, err)
+	err = waffle.On(bus, def).Handle("test.panic", func(context.Context, waffle.Event[testMessage]) error {
+		panic("boom")
+	})
+	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
+
+	const events = 30
+	for range events {
+		require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
+	}
+	require.NoError(t, bus.Drain(ctx))
+
+	require.Len(t, hookCalls, events*2)
+	requireReactionCounts(t, db, reactionCounts{
+		total:     events * 3,
+		succeeded: events,
+		failed:    events * 2,
+	})
+}
+
+func TestPersistentReactionsShutdownPressureKeepsPendingWork(t *testing.T) {
+	ctx := t.Context()
+	db := openPersistentTestDB(t)
+	store := wafflesqlite.NewStore(db)
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(2),
+		waffle.WithStore(store),
+		waffle.WithPersistentReactions(),
+	)
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.shutdown_pressure", 1)
+	require.NoError(t, err)
+	release := make(chan struct{})
+	started := make(chan struct{}, 20)
+
+	err = waffle.On(bus, def).Handle("test.slow", func(context.Context, waffle.Event[testMessage]) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
+
+	const events = 10
+	for range events {
+		require.NoError(t, bus.Record(ctx, def.New(testMessage{})))
+	}
+	for range 2 {
+		<-started
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	require.ErrorIs(t, bus.Shutdown(shutdownCtx), context.DeadlineExceeded)
+
+	requireNoTerminalReactions(t, db, events)
+	close(release)
+}
+
 func openPersistentTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 
@@ -240,4 +426,49 @@ func onlyReactionStatus(t *testing.T, db *sql.DB) string {
 	var status string
 	require.NoError(t, db.QueryRow(`SELECT status FROM waffle_reactions`).Scan(&status))
 	return status
+}
+
+type reactionCounts struct {
+	total     int
+	pending   int
+	running   int
+	succeeded int
+	failed    int
+}
+
+func requireReactionCounts(t *testing.T, db *sql.DB, want reactionCounts) {
+	t.Helper()
+
+	var total int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM waffle_reactions`).Scan(&total))
+	require.Equal(t, want.total, total)
+
+	for status, wantCount := range map[waffle.ReactionStatus]int{
+		waffle.ReactionPending:   want.pending,
+		waffle.ReactionRunning:   want.running,
+		waffle.ReactionSucceeded: want.succeeded,
+		waffle.ReactionFailed:    want.failed,
+	} {
+		var got int
+		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM waffle_reactions WHERE status = ?`, string(status)).Scan(&got))
+		require.Equal(t, wantCount, got, "status %s", status)
+	}
+}
+
+func requireNoTerminalReactions(t *testing.T, db *sql.DB, total int) {
+	t.Helper()
+
+	var gotTotal int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM waffle_reactions`).Scan(&gotTotal))
+	require.Equal(t, total, gotTotal)
+
+	for _, status := range []waffle.ReactionStatus{waffle.ReactionSucceeded, waffle.ReactionFailed} {
+		var got int
+		require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM waffle_reactions WHERE status = ?`, string(status)).Scan(&got))
+		require.Equal(t, 0, got, "status %s", status)
+	}
+}
+
+func stringID(n int) string {
+	return strconv.Itoa(n)
 }

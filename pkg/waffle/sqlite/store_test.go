@@ -237,6 +237,91 @@ func TestStoreReactions(t *testing.T) {
 	require.Equal(t, string(waffle.ReactionSucceeded), status)
 }
 
+func TestStoreClaimReaction(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	event := waffle.EventRecord{
+		ID:            "evt_claim",
+		Type:          "test.event",
+		SchemaVersion: 1,
+		OccurredAt:    time.Now().UTC(),
+		Payload:       []byte(`{}`),
+	}
+	reaction := waffle.ReactionRecord{
+		ID:          "rxn_claim",
+		EventID:     event.ID,
+		HandlerName: "test.handler",
+		Status:      waffle.ReactionPending,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	require.NoError(t, store.RecordEventReactions(ctx, event, []waffle.ReactionRecord{reaction}))
+
+	claimed, err := store.ClaimReaction(ctx, reaction.ID)
+	require.NoError(t, err)
+	require.True(t, claimed)
+
+	claimed, err = store.ClaimReaction(ctx, reaction.ID)
+	require.NoError(t, err)
+	require.False(t, claimed)
+
+	var status string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM waffle_reactions WHERE id = ?`, reaction.ID).Scan(&status))
+	require.Equal(t, string(waffle.ReactionRunning), status)
+}
+
+func TestStoreResetRunningReactions(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	event := waffle.EventRecord{
+		ID:            "evt_reset_running",
+		Type:          "test.event",
+		SchemaVersion: 1,
+		OccurredAt:    time.Now().UTC(),
+		Payload:       []byte(`{}`),
+	}
+	reaction := waffle.ReactionRecord{
+		ID:          "rxn_reset_running",
+		EventID:     event.ID,
+		HandlerName: "test.handler",
+		Status:      waffle.ReactionRunning,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	require.NoError(t, store.RecordEventReactions(ctx, event, []waffle.ReactionRecord{reaction}))
+
+	require.NoError(t, store.ResetRunningReactions(ctx))
+
+	var status string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM waffle_reactions WHERE id = ?`, reaction.ID).Scan(&status))
+	require.Equal(t, string(waffle.ReactionPending), status)
+}
+
+func TestStoreMarkReactionMissingID(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	require.ErrorIs(t, store.MarkReactionSucceeded(ctx, "missing"), waffle.ErrReactionNotFound)
+	require.ErrorIs(t, store.MarkReactionFailed(ctx, "missing"), waffle.ErrReactionNotFound)
+}
+
 func TestStoreAppendReactionsIsIdempotent(t *testing.T) {
 	ctx := t.Context()
 	db := openTestDB(t)

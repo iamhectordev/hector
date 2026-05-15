@@ -65,6 +65,9 @@ func (d *reactionDispatcher) Start(ctx context.Context) error {
 	if d.started {
 		return nil
 	}
+	if err := d.store.ResetRunningReactions(ctx); err != nil {
+		return err
+	}
 
 	runCtx, cancel := context.WithCancel(ctx)
 	d.cancel = cancel
@@ -227,6 +230,20 @@ func (d *reactionDispatcher) enqueue(ctx context.Context, reaction ReactionRecor
 
 	handler, ok := d.handlerLookup(eventRecord.Type, reaction.HandlerName)
 	if !ok {
+		d.pending.Done()
+		d.clearInFlight(reaction.ID)
+		return false
+	}
+	claimed, err := d.store.ClaimReaction(ctx, reaction.ID)
+	if err != nil {
+		d.pending.Done()
+		d.clearInFlight(reaction.ID)
+		if log := d.log(ctx); log != nil {
+			log.ErrorContext(ctx, "claim reaction failed", "reaction_id", reaction.ID, "err", err)
+		}
+		return false
+	}
+	if !claimed {
 		d.pending.Done()
 		d.clearInFlight(reaction.ID)
 		return false

@@ -45,5 +45,10 @@ CREATE TABLE waffle_reactions (
 			Name:    "index_pending_reactions",
 			SQL:     `CREATE INDEX waffle_reactions_pending_idx ON waffle_reactions (status, created_at)`,
 		},
+		migrations.Migration{
+			Version: 5,
+			Name:    "add_reaction_running_status_constraint",
+			SQL:     `CREATE INDEX waffle_reactions_running_idx ON waffle_reactions (status, updated_at)`,
+		},
 	)
 }
