@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+
+	"github.com/iamhectordev/hector/pkg/llm/schema"
 )
 
 // Registry owns tool registration, lookup, and synchronous execution.
@@ -41,10 +43,15 @@ func (r *Registry) Register(tool Tool) error {
 	return nil
 }
 
-func (r *Registry) Definitions() []Definition {
-	defs := make([]Definition, 0, len(r.tools))
+func (r *Registry) Definitions() []schema.ToolDefinition {
+	defs := make([]schema.ToolDefinition, 0, len(r.tools))
 	for _, tool := range r.tools {
-		defs = append(defs, tool.Definition())
+		def := tool.Definition()
+		defs = append(defs, schema.ToolDefinition{
+			Name:        def.Name,
+			Description: def.Description,
+			Parameters:  json.RawMessage(def.Parameters),
+		})
 	}
 	sort.Slice(defs, func(i, j int) bool {
 		return defs[i].Name < defs[j].Name

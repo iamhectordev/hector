@@ -107,10 +107,11 @@ func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
 		},
 	}
 
-	catalog := agent.NewCatalog(echo)
+	registry, err := tools.NewRegistry(echo)
+	require.NoError(t, err)
 	loop := agent.NewLoop(
 		&queueCompleter{replies: []*schema.Message{toolCallMsg(call), stopMsg("done")}},
-		agent.WithCatalog(catalog),
+		agent.WithTools(registry),
 	)
 
 	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
@@ -135,10 +136,11 @@ func TestLoop_Run_MultipleToolRoundsThenStop(t *testing.T) {
 		},
 	}
 
-	catalog := agent.NewCatalog(noop)
+	registry, err := tools.NewRegistry(noop)
+	require.NoError(t, err)
 	loop := agent.NewLoop(
 		&queueCompleter{replies: []*schema.Message{toolCallMsg(call("c1")), toolCallMsg(call("c2")), stopMsg("final")}},
-		agent.WithCatalog(catalog),
+		agent.WithTools(registry),
 	)
 
 	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("go")})

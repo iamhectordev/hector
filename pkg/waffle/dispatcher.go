@@ -11,7 +11,7 @@ import (
 
 type dispatcher interface {
 	Start(context.Context) error
-	Dispatch(context.Context, AnyEvent, []registeredHandler) error
+	Dispatch(context.Context, AnyEvent, EventRecord, []registeredHandler) error
 	Drain(context.Context) error
 	Shutdown(context.Context) error
 }
@@ -20,6 +20,7 @@ type memoryDispatcher struct {
 	workers   int
 	logger    *slog.Logger
 	errorHook ErrorHook
+	store     EventWriter
 
 	mu       sync.Mutex
 	started  bool
@@ -28,11 +29,12 @@ type memoryDispatcher struct {
 	workerWG conc.WaitGroup
 }
 
-func newMemoryDispatcher(workers int, logger *slog.Logger, errorHook ErrorHook) *memoryDispatcher {
+func newMemoryDispatcher(workers int, logger *slog.Logger, errorHook ErrorHook, store EventWriter) *memoryDispatcher {
 	return &memoryDispatcher{
 		workers:   workers,
 		logger:    logger,
 		errorHook: errorHook,
+		store:     store,
 	}
 }
 
@@ -56,7 +58,11 @@ func (d *memoryDispatcher) Start(ctx context.Context) error {
 	return nil
 }
 
-func (d *memoryDispatcher) Dispatch(ctx context.Context, event AnyEvent, handlers []registeredHandler) error {
+func (d *memoryDispatcher) Dispatch(ctx context.Context, event AnyEvent, record EventRecord, handlers []registeredHandler) error {
+	if err := d.store.Append(ctx, record); err != nil {
+		return err
+	}
+
 	for _, handler := range handlers {
 		d.pending.Add(1)
 

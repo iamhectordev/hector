@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"reflect"
 	"sync"
 )
 
@@ -29,18 +30,21 @@ type EventBus struct {
 	store      Store
 	errorHook  ErrorHook
 	dispatcher dispatcher
+	persistent bool
 
-	started  bool
-	closed   bool
-	handlers map[string][]registeredHandler
+	started      bool
+	closed       bool
+	handlers     map[string][]registeredHandler
+	payloadTypes map[string]reflect.Type
 }
 
 // NewEventBus creates an in-memory event bus.
 func NewEventBus(options ...Option) (*EventBus, error) {
 	bus := &EventBus{
-		workers:  1,
-		store:    NewMemoryStore(),
-		handlers: make(map[string][]registeredHandler),
+		workers:      1,
+		store:        NewMemoryStore(),
+		handlers:     make(map[string][]registeredHandler),
+		payloadTypes: make(map[string]reflect.Type),
 	}
 
 	for _, option := range options {
@@ -52,7 +56,15 @@ func NewEventBus(options ...Option) (*EventBus, error) {
 		}
 	}
 
-	bus.dispatcher = newMemoryDispatcher(bus.workers, bus.logger, bus.errorHook)
+	if bus.persistent {
+		reactionStore, ok := bus.store.(ReactionStore)
+		if !ok {
+			return nil, errors.New("waffle: persistent reactions require a reaction store")
+		}
+		bus.dispatcher = newReactionDispatcher(bus.workers, bus.logger, bus.errorHook, reactionStore, bus.handler)
+	} else {
+		bus.dispatcher = newMemoryDispatcher(bus.workers, bus.logger, bus.errorHook, bus.store)
+	}
 	return bus, nil
 }
 
@@ -87,18 +99,17 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 		return err
 	}
 
-	if err := b.store.Append(ctx, record); err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "record append failed", "event_type", event.Type(), "err", err)
-		}
-		return err
-	}
-
 	b.mu.Lock()
 	handlers := append([]registeredHandler(nil), b.handlers[event.Type()]...)
 	b.mu.Unlock()
 
-	return b.dispatcher.Dispatch(ctx, event, handlers)
+	if err := b.dispatcher.Dispatch(ctx, event, record, handlers); err != nil {
+		if log := b.log(ctx); log != nil {
+			log.ErrorContext(ctx, "record dispatch failed", "event_type", event.Type(), "err", err)
+		}
+		return err
+	}
+	return nil
 }
 
 func eventRecord(event AnyEvent) (EventRecord, error) {
@@ -167,11 +178,28 @@ func (b *EventBus) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (b *EventBus) register(eventType string, handler registeredHandler) {
+func (b *EventBus) register(eventType string, payloadType reflect.Type, handler registeredHandler) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	if existing, ok := b.payloadTypes[eventType]; ok && existing != payloadType {
+		return errors.New("waffle: event type registered with different payload type")
+	}
+	b.payloadTypes[eventType] = payloadType
 	b.handlers[eventType] = append(b.handlers[eventType], handler)
+	return nil
+}
+
+func (b *EventBus) handler(eventType, name string) (registeredHandler, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for _, handler := range b.handlers[eventType] {
+		if handler.name == name {
+			return handler, true
+		}
+	}
+	return registeredHandler{}, false
 }
 
 func (b *EventBus) log(context.Context) *slog.Logger {

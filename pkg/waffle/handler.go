@@ -2,7 +2,9 @@ package waffle
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 // Handler processes a typed event.
@@ -31,8 +33,24 @@ func (b Binding[T]) Handle(name string, handler Handler[T]) error {
 		return fmt.Errorf("waffle: handler cannot be nil")
 	}
 
-	b.bus.register(b.def.Type(), registeredHandler{
-		name: name,
+	payloadType := reflect.TypeFor[T]()
+	return b.bus.register(b.def.Type(), payloadType, registeredHandler{
+		name:      name,
+		eventType: b.def.Type(),
+		decode: func(record EventRecord) (AnyEvent, error) {
+			var data T
+			if err := json.Unmarshal(record.Payload, &data); err != nil {
+				return nil, fmt.Errorf("waffle: decode event %q for handler %q: %w", record.ID, name, err)
+			}
+
+			return event[T]{
+				id:            record.ID,
+				eventType:     record.Type,
+				schemaVersion: record.SchemaVersion,
+				occurredAt:    record.OccurredAt,
+				data:          data,
+			}, nil
+		},
 		handle: func(ctx context.Context, raw AnyEvent) error {
 			event, ok := raw.(Event[T])
 			if !ok {
@@ -42,11 +60,11 @@ func (b Binding[T]) Handle(name string, handler Handler[T]) error {
 			return handler(ctx, event)
 		},
 	})
-
-	return nil
 }
 
 type registeredHandler struct {
-	name   string
-	handle func(context.Context, AnyEvent) error
+	name      string
+	eventType string
+	decode    func(EventRecord) (AnyEvent, error)
+	handle    func(context.Context, AnyEvent) error
 }

@@ -64,6 +64,7 @@ func serveAction(ctx context.Context, cmd *cli.Command) error {
 		waffle.WithWorkers(2),
 		waffle.WithLogger(logger),
 		waffle.WithStore(wafflesqlite.NewStore(db)),
+		waffle.WithPersistentReactions(),
 	)
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
@@ -75,7 +76,10 @@ func serveAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	toolRegistry, err := tools.NewRegistry(tools.TimeNow{})
+	toolRegistry, err := tools.NewRegistry(
+		comms.NewReplyRouter(slackModule.NewReplyHandler()),
+		tools.TimeNow{},
+	)
 	if err != nil {
 		return err
 	}
@@ -84,12 +88,8 @@ func serveAction(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	catalog := agent.NewCatalog(
-		comms.NewReplyRouter(slackModule.NewReplyHandler()),
-		tools.TimeNow{},
-	)
 	loop := agent.NewLoop(completer,
-		agent.WithCatalog(catalog),
+		agent.WithTools(toolRegistry),
 		agent.WithSystem(agent.SystemPrompt),
 		agent.WithLogger(logger.With("component", "loop")),
 	)

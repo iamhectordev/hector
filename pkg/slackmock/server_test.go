@@ -18,7 +18,13 @@ func TestPush_ErrorWhenNoClientConnected(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
 
-	err := srv.Push(ctx, slackmock.DMMessage("U222", "D111", "hello"))
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D111",
+		User:        "U222",
+		Text:        "hello",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+	})
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
@@ -51,7 +57,13 @@ func TestPush_DeliveredToConnectedClient(t *testing.T) {
 	}()
 	go client.RunContext(ctx) //nolint:errcheck
 
-	err := srv.Push(ctx, slackmock.DMMessage("U222", "D111", "hello"))
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D111",
+		User:        "U222",
+		Text:        "hello",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+	})
 	require.NoError(t, err)
 
 	select {
@@ -63,4 +75,28 @@ func TestPush_DeliveredToConnectedClient(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout: event not received by SDK client")
 	}
+}
+
+func TestExpect_CapturesAPICall(t *testing.T) {
+	srv := slackmock.New(t)
+
+	expect := srv.Expect("chat.postMessage")
+
+	go func() {
+		_, _, err := slack.New(
+			"xoxb-fake-token",
+			slack.OptionAPIURL(srv.BaseURL()+"/api/"),
+		).PostMessageContext(t.Context(), "D123", slack.MsgOptionText("hello", false))
+		_ = err
+	}()
+
+	call := expect.Require(t, t.Context())
+	require.Equal(t, "D123", call.Get("channel"))
+	require.Equal(t, "hello", call.Get("text"))
+}
+
+func TestExpect_AssertNotCalled(t *testing.T) {
+	srv := slackmock.New(t)
+	expect := srv.Expect("chat.postMessage")
+	expect.AssertNotCalled(t, 50*time.Millisecond)
 }

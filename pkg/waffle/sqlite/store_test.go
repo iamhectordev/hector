@@ -191,6 +191,88 @@ func TestStoreList(t *testing.T) {
 	require.Equal(t, "b", list[0].ID)
 }
 
+func TestStoreReactions(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	event := waffle.EventRecord{
+		ID:            "evt_reactions",
+		Type:          "test.event",
+		SchemaVersion: 1,
+		OccurredAt:    time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC),
+		Payload:       []byte(`{}`),
+	}
+	reaction := waffle.ReactionRecord{
+		ID:          "rxn_test",
+		EventID:     event.ID,
+		HandlerName: "test.handler",
+		Status:      waffle.ReactionPending,
+		CreatedAt:   time.Date(2026, 5, 15, 12, 1, 0, 0, time.UTC),
+		UpdatedAt:   time.Date(2026, 5, 15, 12, 1, 0, 0, time.UTC),
+	}
+
+	require.NoError(t, store.RecordEventReactions(ctx, event, []waffle.ReactionRecord{reaction}))
+
+	pending, err := store.ListPendingReactions(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+	require.Equal(t, reaction.ID, pending[0].ID)
+	require.Equal(t, reaction.EventID, pending[0].EventID)
+	require.Equal(t, reaction.HandlerName, pending[0].HandlerName)
+	require.Equal(t, waffle.ReactionPending, pending[0].Status)
+
+	require.NoError(t, store.MarkReactionSucceeded(ctx, reaction.ID))
+
+	pending, err = store.ListPendingReactions(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, pending)
+
+	var status string
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT status FROM waffle_reactions WHERE id = ?`, reaction.ID).Scan(&status))
+	require.Equal(t, string(waffle.ReactionSucceeded), status)
+}
+
+func TestStoreAppendReactionsIsIdempotent(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	event := waffle.EventRecord{
+		ID:            "evt_reaction_idempotent",
+		Type:          "test.event",
+		SchemaVersion: 1,
+		OccurredAt:    time.Now().UTC(),
+		Payload:       []byte(`{}`),
+	}
+	require.NoError(t, store.Append(ctx, event))
+
+	reaction := waffle.ReactionRecord{
+		ID:          "rxn_once",
+		EventID:     event.ID,
+		HandlerName: "test.handler",
+		Status:      waffle.ReactionPending,
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+
+	require.NoError(t, store.AppendReactions(ctx, []waffle.ReactionRecord{reaction}))
+	reaction.ID = "rxn_duplicate"
+	require.NoError(t, store.AppendReactions(ctx, []waffle.ReactionRecord{reaction}))
+
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM waffle_reactions WHERE event_id = ? AND handler_name = ?`, event.ID, reaction.HandlerName).Scan(&count))
+	require.Equal(t, 1, count)
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 

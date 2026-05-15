@@ -26,6 +26,36 @@ type Store interface {
 	EventReader
 }
 
+// ReactionStatus is the durable state of a handler reaction.
+type ReactionStatus string
+
+const (
+	ReactionPending   ReactionStatus = "pending"
+	ReactionSucceeded ReactionStatus = "succeeded"
+	ReactionFailed    ReactionStatus = "failed"
+)
+
+// ReactionRecord is the storage form of a handler reaction to an event.
+type ReactionRecord struct {
+	ID          string
+	EventID     string
+	HandlerName string
+	Status      ReactionStatus
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// ReactionStore persists and reads durable handler reactions.
+type ReactionStore interface {
+	EventReader
+
+	AppendReactions(ctx context.Context, reactions []ReactionRecord) error
+	RecordEventReactions(ctx context.Context, event EventRecord, reactions []ReactionRecord) error
+	ListPendingReactions(ctx context.Context, limit int) ([]ReactionRecord, error)
+	MarkReactionSucceeded(ctx context.Context, id string) error
+	MarkReactionFailed(ctx context.Context, id string) error
+}
+
 // EventRecord is the storage form of an event.
 type EventRecord struct {
 	ID            string

@@ -6,30 +6,40 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/gorilla/websocket"
+	"github.com/slack-go/slack/slackevents"
 )
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 
 // Server is a fake Slack Socket Mode server for use in tests.
 type Server struct {
-	baseURL   string
-	conn      *websocket.Conn
-	connected chan struct{}
-	seq       atomic.Uint64
+	baseURL      string
+	conn         *websocket.Conn
+	connected    chan struct{}
+	seq          atomic.Uint64
+	mu           sync.Mutex
+	expectations map[string][]chan url.Values
 }
 
 // New starts a fake Slack server on a random port and registers cleanup with t.
 func New(t *testing.T) *Server {
 	t.Helper()
 
-	s := &Server{connected: make(chan struct{})}
+	s := &Server{
+		connected:    make(chan struct{}),
+		expectations: make(map[string][]chan url.Values),
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth.test", s.handleAuthTest)
 	mux.HandleFunc("/api/apps.connections.open", s.handleConnectionsOpen)
+	mux.HandleFunc("/api/", s.handleAPI)
 	mux.HandleFunc("/ws", s.handleWS)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -53,13 +63,29 @@ func New(t *testing.T) *Server {
 // BaseURL returns the HTTP base URL of the fake server.
 func (s *Server) BaseURL() string { return s.baseURL }
 
-// Push sends a Socket Mode event envelope to the connected client and waits for the ACK.
-// It waits for the client to connect if not already connected.
-func (s *Server) Push(ctx context.Context, payload json.RawMessage) error {
+// Expect pre-registers an expectation for the given Slack API method (e.g.
+// "chat.postMessage"). The returned Expectation captures the next matching call.
+// Register before triggering the action to avoid races.
+func (s *Server) Expect(method string) *Expectation {
+	ch := make(chan url.Values, 1)
+	s.mu.Lock()
+	s.expectations[method] = append(s.expectations[method], ch)
+	s.mu.Unlock()
+	return &Expectation{ch: ch}
+}
+
+// Push sends a Socket Mode event to the connected client and waits for the ACK.
+// Accepts typed slackevents event structs (e.g. *slackevents.MessageEvent).
+func (s *Server) Push(ctx context.Context, event any) error {
 	select {
 	case <-s.connected:
 	case <-ctx.Done():
 		return fmt.Errorf("slackmock: no client connected: %w", ctx.Err())
+	}
+
+	payload, err := buildPayload(event)
+	if err != nil {
+		return fmt.Errorf("slackmock: build payload: %w", err)
 	}
 
 	conn := s.conn // safe: conn is written before connected is closed
@@ -77,7 +103,6 @@ func (s *Server) Push(ctx context.Context, payload json.RawMessage) error {
 		return fmt.Errorf("slackmock: write envelope: %w", err)
 	}
 
-	// wait for ACK
 	ackCh := make(chan error, 1)
 	go func() {
 		_, msg, err := conn.ReadMessage()
@@ -101,6 +126,28 @@ func (s *Server) Push(ctx context.Context, payload json.RawMessage) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
+	method := strings.TrimPrefix(r.URL.Path, "/api/")
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	s.mu.Lock()
+	chs := s.expectations[method]
+	if len(chs) > 0 {
+		ch := chs[0]
+		s.expectations[method] = chs[1:]
+		s.mu.Unlock()
+		ch <- r.Form
+	} else {
+		s.mu.Unlock()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{"ok": true}) //nolint:errcheck
 }
 
 func (s *Server) handleAuthTest(w http.ResponseWriter, r *http.Request) {
@@ -140,4 +187,37 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		"connection_info": map[string]any{"app_id": "A111"},
 	})
 	close(s.connected)
+}
+
+// buildPayload wraps a typed slack event in an event_callback envelope.
+func buildPayload(event any) (json.RawMessage, error) {
+	var innerType string
+	switch event.(type) {
+	case *slackevents.MessageEvent:
+		innerType = "message"
+	default:
+		return nil, fmt.Errorf("unsupported event type %T", event)
+	}
+
+	inner, err := json.Marshal(event)
+	if err != nil {
+		return nil, err
+	}
+
+	// inject "type" into the inner event map
+	innerMap := make(map[string]any)
+	if err := json.Unmarshal(inner, &innerMap); err != nil {
+		return nil, err
+	}
+	innerMap["type"] = innerType
+
+	return json.Marshal(map[string]any{
+		"token":      "verification-token",
+		"team_id":    "T111",
+		"api_app_id": "A111",
+		"event":      innerMap,
+		"type":       "event_callback",
+		"event_id":   "Ev111",
+		"event_time": 1610241741,
+	})
 }

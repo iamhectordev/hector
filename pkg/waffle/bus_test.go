@@ -232,6 +232,27 @@ func TestRecordBeforeStartReturnsError(t *testing.T) {
 	require.ErrorIs(t, bus.Record(ctx, def.New(testMessage{})), waffle.ErrNotStarted)
 }
 
+func TestHandleRejectsSameEventTypeWithDifferentPayloadType(t *testing.T) {
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	first, err := waffle.Define[testMessage]("test.same_type", 1)
+	require.NoError(t, err)
+	second, err := waffle.Define[struct {
+		Other string
+	}]("test.same_type", 1)
+	require.NoError(t, err)
+
+	err = waffle.On(bus, first).Handle("test.first", func(context.Context, waffle.Event[testMessage]) error {
+		return nil
+	})
+	require.NoError(t, err)
+
+	err = waffle.On(bus, second).Handle("test.second", func(context.Context, waffle.Event[struct{ Other string }]) error {
+		return nil
+	})
+	require.ErrorContains(t, err, "different payload type")
+}
+
 func TestStartIsIdempotent(t *testing.T) {
 	ctx := t.Context()
 	bus, err := waffle.NewEventBus()

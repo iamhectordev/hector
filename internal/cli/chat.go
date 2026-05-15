@@ -7,6 +7,7 @@ import (
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
+	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
@@ -62,17 +63,21 @@ func chatAction(ctx context.Context, cmd *cli.Command) error {
 		waffle.WithWorkers(2),
 		waffle.WithLogger(logger),
 		waffle.WithStore(wafflesqlite.NewStore(db)),
+		waffle.WithPersistentReactions(),
 	)
 	if err != nil {
 		logger.ErrorContext(ctx, "failed to create event bus", "err", err)
 		return err
 	}
 
-	catalog := agent.NewCatalog(
+	toolRegistry, err := tools.NewRegistry(
 		comms.NewReplyRouter(tui.NewReplyHandler(os.Stdout)),
 	)
+	if err != nil {
+		return err
+	}
 	loop := agent.NewLoop(completer,
-		agent.WithCatalog(catalog),
+		agent.WithTools(toolRegistry),
 		agent.WithSystem(agent.SystemPrompt),
 		agent.WithLogger(logger.With("component", "loop")),
 	)

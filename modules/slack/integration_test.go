@@ -8,6 +8,7 @@ import (
 	module "github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/slackmock"
 	"github.com/iamhectordev/hector/pkg/waffle"
+	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,7 +54,13 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 		done <- m.Start(ctx)
 	}()
 
-	require.NoError(t, srv.Push(ctx, slackmock.DMMessage("U222", "D111", "hello from dm")))
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D111",
+		User:        "U222",
+		Text:        "hello from dm",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+	}))
 
 	select {
 	case data := <-got:
@@ -110,7 +117,13 @@ func TestModule_Start_ChannelMessageIgnored(t *testing.T) {
 		done <- m.Start(ctx)
 	}()
 
-	require.NoError(t, srv.Push(ctx, slackmock.ChannelMessage("U222", "C111", "ignore me")))
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "C111",
+		User:        "U222",
+		Text:        "ignore me",
+		ChannelType: slackevents.ChannelTypeChannel,
+		TimeStamp:   "1610241741.000200",
+	}))
 
 	select {
 	case data := <-got:

@@ -55,3 +55,11 @@ func WithStore(store Store) Option {
 		return nil
 	}
 }
+
+// WithPersistentReactions makes handler reactions durable.
+func WithPersistentReactions() Option {
+	return func(bus *EventBus) error {
+		bus.persistent = true
+		return nil
+	}
+}

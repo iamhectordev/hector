@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 
@@ -14,11 +15,17 @@ type Runner interface {
 	Run(ctx context.Context, messages []*schema.Message) (*schema.Message, error)
 }
 
+// ToolRuntime provides the model-facing tool catalog and executes tool calls.
+type ToolRuntime interface {
+	Definitions() []schema.ToolDefinition
+	Run(ctx context.Context, name string, args json.RawMessage) (string, error)
+}
+
 // Loop runs the agent turn: calls the model, executes any tool calls, and repeats
 // until the model stops or returns a plain text response.
 type Loop struct {
 	completer llm.Completer
-	catalog   *Catalog
+	tools     ToolRuntime
 	system    string
 	log       *slog.Logger
 }
@@ -26,9 +33,9 @@ type Loop struct {
 // LoopOption configures a Loop.
 type LoopOption func(*Loop)
 
-// WithCatalog attaches a tool catalog to the loop.
-func WithCatalog(c *Catalog) LoopOption {
-	return func(l *Loop) { l.catalog = c }
+// WithTools attaches tools to the loop.
+func WithTools(t ToolRuntime) LoopOption {
+	return func(l *Loop) { l.tools = t }
 }
 
 // WithSystem sets the system prompt for every turn.
@@ -52,8 +59,8 @@ func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
 func (l *Loop) Run(ctx context.Context, messages []*schema.Message) (*schema.Message, error) {
 	for {
 		req := schema.CompletionRequest{System: l.system, Messages: messages}
-		if l.catalog != nil {
-			req.Tools = l.catalog.Definitions()
+		if l.tools != nil {
+			req.Tools = l.tools.Definitions()
 		}
 
 		reply, err := l.completer.Complete(ctx, req)
@@ -70,7 +77,10 @@ func (l *Loop) Run(ctx context.Context, messages []*schema.Message) (*schema.Mes
 			messages = append(messages, reply)
 			for _, call := range reply.ToolCalls {
 				l.log.DebugContext(ctx, "tool call", "tool", call.Name, "args", string(call.Arguments))
-				output, execErr := l.catalog.Execute(ctx, call.Name, call.Arguments)
+				if l.tools == nil {
+					return nil, fmt.Errorf("agent: tool call %q requested without tools configured", call.Name)
+				}
+				output, execErr := l.tools.Run(ctx, call.Name, call.Arguments)
 				if execErr != nil {
 					l.log.DebugContext(ctx, "tool error", "tool", call.Name, "error", execErr)
 					output = fmt.Sprintf("error: %s", execErr)
