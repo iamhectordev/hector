@@ -2,7 +2,6 @@ package cli_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
@@ -10,7 +9,7 @@ import (
 	slackmodule "github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/comms"
-	"github.com/iamhectordev/hector/pkg/llm/schema"
+	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
 	"github.com/iamhectordev/hector/pkg/slackmock"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -40,14 +39,10 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	require.NoError(t, err)
 
 	loop := agent.NewLoop(
-		&scriptedCompleter{replies: []*schema.Message{
-			withToolCall(schema.ToolCall{
-				ID:        "c1",
-				Name:      "reply",
-				Arguments: json.RawMessage(`{"text":"hello back"}`),
-			}),
-			withStop(""),
-		}},
+		llmtest.NewCompleter(t,
+			llmtest.ToolCalls(llmtest.Call("c1", "reply", `{"text":"hello back"}`)),
+			llmtest.Stop(""),
+		),
 		agent.WithTools(registry),
 	)
 
@@ -76,31 +71,3 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	require.Equal(t, "1610241741.000200", call.Get("thread_ts"))
 }
 
-// scriptedCompleter returns replies in order, one per Complete call.
-type scriptedCompleter struct {
-	replies []*schema.Message
-	i       int
-}
-
-func (c *scriptedCompleter) Complete(_ context.Context, _ schema.CompletionRequest) (*schema.Message, error) {
-	if c.i >= len(c.replies) {
-		return nil, nil
-	}
-	r := c.replies[c.i]
-	c.i++
-	return r, nil
-}
-
-func withStop(content string) *schema.Message {
-	m := schema.AssistantMessage(content)
-	m.FinishReason = schema.FinishReasonStop
-	return m
-}
-
-func withToolCall(calls ...schema.ToolCall) *schema.Message {
-	return &schema.Message{
-		Role:         schema.RoleAssistant,
-		FinishReason: schema.FinishReasonToolCalls,
-		ToolCalls:    calls,
-	}
-}

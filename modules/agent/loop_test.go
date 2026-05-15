@@ -8,29 +8,10 @@ import (
 
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tools"
+	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/stretchr/testify/require"
 )
-
-// queueCompleter returns replies in order, one per Complete call.
-type queueCompleter struct {
-	replies []*schema.Message
-	errs    []error
-	i       int
-}
-
-func (q *queueCompleter) Complete(_ context.Context, _ schema.CompletionRequest) (*schema.Message, error) {
-	if q.i >= len(q.replies) {
-		return nil, errors.New("queueCompleter: no more replies")
-	}
-	reply := q.replies[q.i]
-	var err error
-	if q.i < len(q.errs) {
-		err = q.errs[q.i]
-	}
-	q.i++
-	return reply, err
-}
 
 // funcTool adapts a plain function into the tools.Tool interface.
 type funcTool struct {
@@ -47,18 +28,8 @@ func (f funcTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 	return f.execute(ctx, args)
 }
 
-func stopMsg(content string) *schema.Message {
-	m := schema.AssistantMessage(content)
-	m.FinishReason = schema.FinishReasonStop
-	return m
-}
-
-func toolCallMsg(calls ...schema.ToolCall) *schema.Message {
-	return &schema.Message{Role: schema.RoleAssistant, FinishReason: schema.FinishReasonToolCalls, ToolCalls: calls}
-}
-
 func TestLoop_Run_StopsOnFinishReasonStop(t *testing.T) {
-	loop := agent.NewLoop(&queueCompleter{replies: []*schema.Message{stopMsg("hi")}})
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Stop("hi")))
 	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "hi", reply.Content)
@@ -67,17 +38,14 @@ func TestLoop_Run_StopsOnFinishReasonStop(t *testing.T) {
 
 func TestLoop_Run_PropagatesCompleterError(t *testing.T) {
 	boom := errors.New("llm down")
-	loop := agent.NewLoop(&queueCompleter{
-		replies: []*schema.Message{nil},
-		errs:    []error{boom},
-	})
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Error(boom)))
 	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorIs(t, err, boom)
 	require.Nil(t, reply)
 }
 
 func TestLoop_Run_NilReplyIsError(t *testing.T) {
-	loop := agent.NewLoop(&queueCompleter{replies: []*schema.Message{nil}})
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Nil()))
 	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
 	require.Error(t, err)
 	require.Nil(t, reply)
@@ -86,13 +54,13 @@ func TestLoop_Run_NilReplyIsError(t *testing.T) {
 func TestLoop_Run_UnknownFinishReasonIsError(t *testing.T) {
 	m := schema.AssistantMessage("")
 	m.FinishReason = "content_filter"
-	loop := agent.NewLoop(&queueCompleter{replies: []*schema.Message{m}})
+	loop := agent.NewLoop(&rawCompleter{msg: m})
 	_, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorContains(t, err, "content_filter")
 }
 
 func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
-	call := schema.ToolCall{ID: "c1", Name: "echo", Arguments: json.RawMessage(`{"text":"ping"}`)}
+	call := llmtest.Call("c1", "echo", `{"text":"ping"}`)
 
 	var got string
 	echo := funcTool{
@@ -110,7 +78,7 @@ func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
 	registry, err := tools.NewRegistry(echo)
 	require.NoError(t, err)
 	loop := agent.NewLoop(
-		&queueCompleter{replies: []*schema.Message{toolCallMsg(call), stopMsg("done")}},
+		llmtest.NewCompleter(t, llmtest.ToolCalls(call), llmtest.Stop("done")),
 		agent.WithTools(registry),
 	)
 
@@ -121,10 +89,6 @@ func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
 }
 
 func TestLoop_Run_MultipleToolRoundsThenStop(t *testing.T) {
-	call := func(id string) schema.ToolCall {
-		return schema.ToolCall{ID: id, Name: "noop", Arguments: json.RawMessage(`{}`)}
-	}
-
 	var calls int
 	noop := funcTool{
 		name:   "noop",
@@ -139,7 +103,11 @@ func TestLoop_Run_MultipleToolRoundsThenStop(t *testing.T) {
 	registry, err := tools.NewRegistry(noop)
 	require.NoError(t, err)
 	loop := agent.NewLoop(
-		&queueCompleter{replies: []*schema.Message{toolCallMsg(call("c1")), toolCallMsg(call("c2")), stopMsg("final")}},
+		llmtest.NewCompleter(t,
+			llmtest.ToolCalls(llmtest.Call("c1", "noop", `{}`)),
+			llmtest.ToolCalls(llmtest.Call("c2", "noop", `{}`)),
+			llmtest.Stop("final"),
+		),
 		agent.WithTools(registry),
 	)
 
@@ -147,4 +115,11 @@ func TestLoop_Run_MultipleToolRoundsThenStop(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "final", reply.Content)
 	require.Equal(t, 2, calls)
+}
+
+// rawCompleter returns a fixed message, used to test unknown finish reasons.
+type rawCompleter struct{ msg *schema.Message }
+
+func (r *rawCompleter) Complete(_ context.Context, _ schema.CompletionRequest) (*schema.Message, error) {
+	return r.msg, nil
 }
