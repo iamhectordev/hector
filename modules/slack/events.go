@@ -9,16 +9,35 @@ import (
 // MessageReceived is emitted when a Slack direct message is received.
 var MessageReceived = mustDefine[MessageReceivedData]("slack.message_received", 1)
 
-// Origin identifies where a Slack message came from.
-type Origin struct {
-	ChannelID string
-	ThreadTS  string // non-empty when the message is part of a thread
+// ChannelType identifies the type of a Slack conversation.
+type ChannelType string
+
+const (
+	ChannelTypeDM      ChannelType = "dm"
+	ChannelTypeGroupDM ChannelType = "group_dm"
+	ChannelTypeChannel ChannelType = "channel"
+	ChannelTypePrivate ChannelType = "private_channel"
+)
+
+// Channel holds information about the conversation where the message was posted.
+type Channel struct {
+	ID          string
+	Name        string
+	Type        ChannelType
+	MemberCount int
+}
+
+// Sender holds information about the user who sent the message.
+type Sender struct {
+	ID   string
+	Name string
 }
 
 // MessageReceivedData is the payload for [MessageReceived].
 type MessageReceivedData struct {
-	Origin     Origin
-	SenderID   string
+	Channel    Channel
+	ThreadTS   string // Empty when not in a thread
+	Sender     Sender
 	Text       string
 	SentAt     time.Time
 	ReceivedAt time.Time

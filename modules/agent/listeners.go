@@ -22,7 +22,7 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 
 func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 	data := e.Data()
-	ctx = session.With(ctx, session.Session{SourceURI: slack.NewOriginURI(data.Origin.ChannelID, data.Origin.ThreadTS)})
+	ctx = session.With(ctx, session.Session{SourceURI: slack.NewOriginURI(data.Channel.ID, data.ThreadTS)})
 	text := data.Text
 	if err := m.handle(ctx, text); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process slack message",

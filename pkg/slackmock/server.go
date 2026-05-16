@@ -25,7 +25,12 @@ type Server struct {
 	connected    chan struct{}
 	seq          atomic.Uint64
 	mu           sync.Mutex
-	expectations map[string][]chan url.Values
+	expectations map[string][]ExpectationEntry
+}
+
+type ExpectationEntry struct {
+	ch       chan url.Values
+	response any
 }
 
 // New starts a fake Slack server on a random port and registers cleanup with t.
@@ -34,7 +39,7 @@ func New(t *testing.T) *Server {
 
 	s := &Server{
 		connected:    make(chan struct{}),
-		expectations: make(map[string][]chan url.Values),
+		expectations: make(map[string][]ExpectationEntry),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/auth.test", s.handleAuthTest)
@@ -64,12 +69,19 @@ func New(t *testing.T) *Server {
 func (s *Server) BaseURL() string { return s.baseURL }
 
 // Expect pre-registers an expectation for the given Slack API method (e.g.
-// "chat.postMessage"). The returned Expectation captures the next matching call.
-// Register before triggering the action to avoid races.
+// "chat.postMessage") returning a default {"ok": true} response.
 func (s *Server) Expect(method string) *Expectation {
+	return s.ExpectWithResponse(method, map[string]any{"ok": true})
+}
+
+// ExpectWithResponse pre-registers an expectation returning a specific JSON response.
+func (s *Server) ExpectWithResponse(method string, response any) *Expectation {
 	ch := make(chan url.Values, 1)
 	s.mu.Lock()
-	s.expectations[method] = append(s.expectations[method], ch)
+	s.expectations[method] = append(s.expectations[method], ExpectationEntry{
+		ch:       ch,
+		response: response,
+	})
 	s.mu.Unlock()
 	return &Expectation{ch: ch}
 }
@@ -136,18 +148,22 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.mu.Lock()
-	chs := s.expectations[method]
-	if len(chs) > 0 {
-		ch := chs[0]
-		s.expectations[method] = chs[1:]
+	entries := s.expectations[method]
+	var response any = map[string]any{"ok": true}
+	if len(entries) > 0 {
+		entry := entries[0]
+		s.expectations[method] = entries[1:]
 		s.mu.Unlock()
-		ch <- r.Form
+		entry.ch <- r.Form
+		if entry.response != nil {
+			response = entry.response
+		}
 	} else {
 		s.mu.Unlock()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{"ok": true}) //nolint:errcheck
+	json.NewEncoder(w).Encode(response) //nolint:errcheck
 }
 
 func (s *Server) handleAuthTest(w http.ResponseWriter, r *http.Request) {

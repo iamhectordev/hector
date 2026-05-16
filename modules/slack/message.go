@@ -13,9 +13,6 @@ func messageReceivedData(now time.Time, e *slackevents.MessageEvent) (MessageRec
 	if e == nil {
 		return MessageReceivedData{}, false, fmt.Errorf("slack: message event cannot be nil")
 	}
-	if !e.IsIM() {
-		return MessageReceivedData{}, false, nil
-	}
 
 	sentAt, err := parseSlackTimestamp(e.TimeStamp)
 	if err != nil {
@@ -27,8 +24,9 @@ func messageReceivedData(now time.Time, e *slackevents.MessageEvent) (MessageRec
 		threadTS = e.TimeStamp
 	}
 	return MessageReceivedData{
-		Origin:     Origin{ChannelID: e.Channel, ThreadTS: threadTS},
-		SenderID:   e.User,
+		Channel:    Channel{ID: e.Channel},
+		ThreadTS:   threadTS,
+		Sender:     Sender{ID: e.User},
 		Text:       e.Text,
 		SentAt:     sentAt,
 		ReceivedAt: now,

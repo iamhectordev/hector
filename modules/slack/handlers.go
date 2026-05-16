@@ -8,6 +8,7 @@ import (
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
+	"github.com/sourcegraph/conc/pool"
 
 	"github.com/iamhectordev/hector/pkg/session"
 )
@@ -76,7 +77,52 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	if !ok {
 		return nil
 	}
-	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(data.Origin.ChannelID, data.Origin.ThreadTS)})
+
+	p := pool.New()
+
+	p.Go(func() {
+		user, uErr := m.api.GetUserInfoContext(ctx, e.User)
+		if uErr != nil {
+			m.log(ctx).DebugContext(ctx, "failed to get user info", "err", uErr, "user", e.User)
+			return
+		}
+		name := user.Profile.DisplayName
+		if name == "" {
+			name = user.Profile.RealName
+		}
+		data.Sender.Name = name
+	})
+
+	p.Go(func() {
+		channel, cErr := m.api.GetConversationInfoContext(ctx, &slack.GetConversationInfoInput{
+			ChannelID:         e.Channel,
+			IncludeLocale:     false,
+			IncludeNumMembers: true,
+		})
+		if cErr != nil {
+			m.log(ctx).DebugContext(ctx, "failed to get conversation info", "err", cErr, "channel", e.Channel)
+			return
+		}
+		data.Channel.Name = channel.Name
+		data.Channel.MemberCount = channel.NumMembers
+	})
+
+	p.Wait()
+
+	switch e.ChannelType {
+	case "im":
+		data.Channel.Type = ChannelTypeDM
+	case "mpim":
+		data.Channel.Type = ChannelTypeGroupDM
+	case "channel":
+		data.Channel.Type = ChannelTypeChannel
+	case "group":
+		data.Channel.Type = ChannelTypePrivate
+	default:
+		data.Channel.Type = ChannelType(e.ChannelType)
+	}
+
+	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(data.Channel.ID, data.ThreadTS)})
 	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
 	if err := m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)

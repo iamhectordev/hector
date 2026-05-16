@@ -33,15 +33,15 @@ func (m *Module) NewReplyHandler() *ReplyHandler { return &ReplyHandler{replier:
 func (h *ReplyHandler) Scheme() string { return "slack" }
 
 func (h *ReplyHandler) Reply(ctx context.Context, uri *url.URL, text string) error {
-	origin, err := ParseOriginURI(uri)
+	channelID, threadTS, err := ParseOriginURI(uri)
 	if err != nil {
 		return err
 	}
 	opts := []slackgo.MsgOption{slackgo.MsgOptionText(text, false)}
-	if origin.ThreadTS != "" {
-		opts = append(opts, slackgo.MsgOptionTS(origin.ThreadTS))
+	if threadTS != "" {
+		opts = append(opts, slackgo.MsgOptionTS(threadTS))
 	}
-	_, _, err = h.replier.PostMessageContext(ctx, origin.ChannelID, opts...)
+	_, _, err = h.replier.PostMessageContext(ctx, channelID, opts...)
 	return err
 }
 
@@ -50,13 +50,10 @@ func NewOriginURI(channelID, threadTS string) string {
 	return session.NewSourceURI("slack", channelID, threadTS)
 }
 
-// ParseOriginURI parses a slack origin URI into an Origin.
-func ParseOriginURI(u *url.URL) (Origin, error) {
+// ParseOriginURI parses a slack origin URI into channelID and threadTS.
+func ParseOriginURI(u *url.URL) (string, string, error) {
 	if u.Host == "" {
-		return Origin{}, fmt.Errorf("slack: origin URI missing channel ID")
+		return "", "", fmt.Errorf("slack: origin URI missing channel ID")
 	}
-	return Origin{
-		ChannelID: u.Host,
-		ThreadTS:  strings.TrimPrefix(u.Path, "/"),
-	}, nil
+	return u.Host, strings.TrimPrefix(u.Path, "/"), nil
 }

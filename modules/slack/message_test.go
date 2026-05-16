@@ -30,8 +30,9 @@ func TestMessageReceivedData(t *testing.T) {
 				ChannelType: slackevents.ChannelTypeIM,
 			},
 			want: MessageReceivedData{
-				Origin:     Origin{ChannelID: "D024BE91L", ThreadTS: "1355517523.000005"},
-				SenderID:   "U2147483697",
+				Channel:    Channel{ID: "D024BE91L"},
+				ThreadTS:   "1355517523.000005",
+				Sender:     Sender{ID: "U2147483697"},
 				Text:       "hello",
 				SentAt:     sentAt,
 				ReceivedAt: now,
@@ -39,7 +40,7 @@ func TestMessageReceivedData(t *testing.T) {
 			ok: true,
 		},
 		{
-			name: "channel drops",
+			name: "channel passes through",
 			in: &slackevents.MessageEvent{
 				Channel:     "C024BE91L",
 				User:        "U2147483697",
@@ -47,7 +48,15 @@ func TestMessageReceivedData(t *testing.T) {
 				TimeStamp:   "1355517523.000005",
 				ChannelType: slackevents.ChannelTypeChannel,
 			},
-			ok: false,
+			want: MessageReceivedData{
+				Channel:    Channel{ID: "C024BE91L"},
+				ThreadTS:   "1355517523.000005",
+				Sender:     Sender{ID: "U2147483697"},
+				Text:       "hello",
+				SentAt:     sentAt,
+				ReceivedAt: now,
+			},
+			ok: true,
 		},
 	}
 
