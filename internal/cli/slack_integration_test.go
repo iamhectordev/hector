@@ -55,6 +55,15 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 
 	go sv.Run(ctx)
 
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id": "U222",
+			"profile": map[string]any{
+				"display_name": "Test User",
+			},
+		},
+	})
 	postMessage := srv.Expect("chat.postMessage")
 
 	err = srv.Push(ctx, &slackevents.MessageEvent{
@@ -72,9 +81,9 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	require.Equal(t, "1610241741.000200", call.Get("thread_ts"))
 
 	require.NotEmpty(t, completer.Requests)
-	sys := completer.Requests[0].System
-	require.Contains(t, sys, `<conversation platform="slack" channel_type="dm" channel_id="D123" thread_ts="1610241741.000200">`)
-	require.Contains(t, sys, `<participants>
-    <participant id="U222"></participant>
-  </participants>`)
+	req := completer.Requests[0]
+	require.Contains(t, req.System, `<conversation platform="slack" channel_type="dm" channel_id="D123" thread_ts="1610241741.000200"></conversation>`)
+	
+	require.Len(t, req.Messages, 1)
+	require.Equal(t, `<msg sender_id="U222" sender_name="Test User">hi</msg>`, req.Messages[0].Content)
 }

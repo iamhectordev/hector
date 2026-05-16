@@ -43,7 +43,7 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	rep := <-done
 	require.ErrorIs(t, rep.Err(), context.Canceled)
 	require.NoError(t, bus.Shutdown(context.Background()))
-	require.Equal(t, "hello\n", buf.String())
+	require.Equal(t, "<msg>hello</msg>\n", buf.String())
 }
 
 func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
@@ -77,7 +77,7 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 	rep := <-done
 	require.ErrorIs(t, rep.Err(), context.Canceled)
 	require.NoError(t, bus.Shutdown(context.Background()))
-	require.Contains(t, buf.String(), "hello from slack\n")
+	require.Contains(t, buf.String(), "<msg>hello from slack</msg>\n")
 }
 
 type safeBuffer struct {

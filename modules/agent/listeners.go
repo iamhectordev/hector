@@ -9,22 +9,22 @@ import (
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
-type ParticipantContext struct {
-	ID   string `xml:"id,attr"`
-	Name string `xml:"name,attr,omitempty"`
-}
-
 type SlackContext struct {
-	Platform     string               `xml:"platform,attr"`
-	ChannelType  string               `xml:"channel_type,attr,omitempty"`
-	ChannelID    string               `xml:"channel_id,attr,omitempty"`
-	ChannelName  string               `xml:"channel_name,attr,omitempty"`
-	ThreadTS     string               `xml:"thread_ts,attr,omitempty"`
-	Participants []ParticipantContext `xml:"participants>participant,omitempty"`
+	Platform    string `xml:"platform,attr"`
+	ChannelType string `xml:"channel_type,attr,omitempty"`
+	ChannelID   string `xml:"channel_id,attr,omitempty"`
+	ChannelName string `xml:"channel_name,attr,omitempty"`
+	ThreadTS    string `xml:"thread_ts,attr,omitempty"`
 }
 
 type TUIContext struct {
 	Platform string `xml:"platform,attr"`
+}
+
+type UserMessage struct {
+	SenderID   string `xml:"sender_id,attr,omitempty"`
+	SenderName string `xml:"sender_name,attr,omitempty"`
+	Text       string `xml:",chardata"`
 }
 
 func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageReceivedData]) error {
@@ -40,7 +40,15 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 		return err
 	}
 
-	if err := m.handle(ctx, system, text); err != nil {
+	msgCtx := UserMessage{Text: text}
+	content, err := NewPrompt(
+		NewXMLPart("msg", msgCtx),
+	).Render()
+	if err != nil {
+		return err
+	}
+
+	if err := m.handle(ctx, system, content); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process tui message",
 			"event_id", e.ID(), "event_type", e.Type(), "text_len", len(text), "err", err)
 		return err
@@ -60,12 +68,6 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		ChannelName: data.Channel.Name,
 		ThreadTS:    data.ThreadTS,
 	}
-	if data.Sender.ID != "" || data.Sender.Name != "" {
-		slackCtx.Participants = []ParticipantContext{{
-			ID:   data.Sender.ID,
-			Name: data.Sender.Name,
-		}}
-	}
 
 	system, err := NewPrompt(
 		TextPart(m.baseSystem),
@@ -75,7 +77,19 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		return err
 	}
 
-	if err := m.handle(ctx, system, text); err != nil {
+	msgCtx := UserMessage{
+		SenderID:   data.Sender.ID,
+		SenderName: data.Sender.Name,
+		Text:       data.Text,
+	}
+	content, err := NewPrompt(
+		NewXMLPart("msg", msgCtx),
+	).Render()
+	if err != nil {
+		return err
+	}
+
+	if err := m.handle(ctx, system, content); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process slack message",
 			"event_id", e.ID(), "event_type", e.Type(), "text_len", len(text), "err", err)
 		return err
