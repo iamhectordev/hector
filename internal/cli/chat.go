@@ -12,6 +12,7 @@ import (
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
+	sessionsqlite "github.com/iamhectordev/hector/pkg/session/sqlite"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	wafflesqlite "github.com/iamhectordev/hector/pkg/waffle/sqlite"
@@ -20,8 +21,8 @@ import (
 
 func chatCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "chat",
-		Usage: "interactive chat session (Ctrl-C to exit)",
+		Name:   "chat",
+		Usage:  "interactive chat session (Ctrl-C to exit)",
 		Action: chatAction,
 	}
 }
@@ -49,9 +50,9 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 			logger.ErrorContext(ctx, "failed to close sqlite database", "err", closeErr)
 		}
 	}()
-	if err := dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations()); err != nil {
+	if err := dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations(), sessionsqlite.Migrations()); err != nil {
 		logger.ErrorContext(ctx, "failed to migrate sqlite database", "err", err)
-		return fmt.Errorf("waffle migrations: %w", err)
+		return fmt.Errorf("sqlite migrations: %w", err)
 	}
 	bus, err := waffle.NewEventBus(
 		waffle.WithWorkers(2),
@@ -64,9 +65,11 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
-	toolRegistry, err := tools.NewRegistry(
-		comms.NewReplyRouter(tui.NewReplyHandler(os.Stdout)),
-	)
+	replyRouter, err := comms.NewReplyRouter(tui.NewReplyHandler(os.Stdout))
+	if err != nil {
+		return err
+	}
+	toolRegistry, err := tools.NewRegistry(replyRouter)
 	if err != nil {
 		return err
 	}
@@ -74,6 +77,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 		agent.WithTools(toolRegistry),
 		agent.WithSystem(agent.SystemPrompt),
 		agent.WithLogger(logger.With("component", "loop")),
+		agent.WithSessionStore(sessionsqlite.NewStore(db)),
 	)
 
 	sv, err := supervisor.New([]supervisor.Module{
