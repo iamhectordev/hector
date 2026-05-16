@@ -16,69 +16,65 @@ type ReplyHandler interface {
 	Reply(ctx context.Context, uri *url.URL, text string) error
 }
 
+type replyInput struct {
+	Text string `json:"text" jsonschema:"The reply text to send to the user."`
+}
+
 // ReplyRouter implements tools.Tool, routing reply calls to the handler
 // whose scheme matches the source URI in the session context.
 type ReplyRouter struct {
 	handlers map[string]ReplyHandler
+	schema   json.RawMessage
 }
 
 var _ tools.Tool = (*ReplyRouter)(nil)
 
-func NewReplyRouter(handlers ...ReplyHandler) *ReplyRouter {
-	r := &ReplyRouter{handlers: make(map[string]ReplyHandler, len(handlers))}
+func NewReplyRouter(handlers ...ReplyHandler) (*ReplyRouter, error) {
+	schema, err := tools.SchemaFor[replyInput]()
+	if err != nil {
+		return nil, fmt.Errorf("comms: reply: schema: %w", err)
+	}
+	r := &ReplyRouter{
+		handlers: make(map[string]ReplyHandler, len(handlers)),
+		schema:   schema,
+	}
 	for _, h := range handlers {
 		r.handlers[h.Scheme()] = h
 	}
-	return r
-}
-
-func (r *ReplyRouter) Register(h ReplyHandler) {
-	r.handlers[h.Scheme()] = h
+	return r, nil
 }
 
 func (r *ReplyRouter) Definition() tools.Definition {
-	params, _ := json.Marshal(map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"text": map[string]any{
-				"type":        "string",
-				"description": "The reply text to send to the user.",
-			},
-		},
-		"required": []string{"text"},
-	})
 	return tools.Definition{
 		Name:        "reply",
 		Description: "Send a text reply back to the user on the surface they messaged from.",
-		Parameters:  params,
+		Parameters:  r.schema,
 	}
 }
 
 func (r *ReplyRouter) Run(ctx context.Context, args json.RawMessage) (string, error) {
-	var input struct {
-		Text string `json:"text"`
-	}
+	var input replyInput
 	if err := json.Unmarshal(args, &input); err != nil {
-		return "", fmt.Errorf("comms: reply: invalid args: %w", err)
+		return tools.Fail(fmt.Sprintf("invalid args: %s", err))
 	}
 
 	sess, ok := session.From(ctx)
 	if !ok {
-		return "", fmt.Errorf("comms: reply: no session in context")
+		return tools.Fail("no session in context")
 	}
 
 	uri, err := session.ParseSourceURI(sess.SourceURI)
 	if err != nil {
-		return "", fmt.Errorf("comms: reply: %w", err)
+		return tools.Fail(err.Error())
 	}
 
 	h, ok := r.handlers[uri.Scheme]
 	if !ok {
-		return "", fmt.Errorf("comms: reply: no handler for scheme %q", uri.Scheme)
+		return tools.Fail(fmt.Sprintf("no handler for scheme %q", uri.Scheme))
 	}
 
 	if err := h.Reply(ctx, uri, input.Text); err != nil {
-		return "", err
+		return tools.Fail(err.Error())
 	}
-	return "sent", nil
+	return tools.OK("sent")
 }

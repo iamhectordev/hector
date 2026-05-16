@@ -33,9 +33,9 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	registry, err := tools.NewRegistry(
-		comms.NewReplyRouter(slackMod.NewReplyHandler()),
-	)
+	replyRouter, err := comms.NewReplyRouter(slackMod.NewReplyHandler())
+	require.NoError(t, err)
+	registry, err := tools.NewRegistry(replyRouter)
 	require.NoError(t, err)
 
 	loop := agent.NewLoop(

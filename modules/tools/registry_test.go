@@ -45,7 +45,10 @@ func TestRegistryDefinitionsAreSorted(t *testing.T) {
 }
 
 func TestRegistryRunsTimeNow(t *testing.T) {
-	registry, err := tools.NewRegistry(tools.TimeNow{})
+	tn, err := tools.NewTimeNow()
+	require.NoError(t, err)
+
+	registry, err := tools.NewRegistry(tn)
 	require.NoError(t, err)
 
 	output, err := registry.Run(t.Context(), "time.now", nil)
