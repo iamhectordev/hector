@@ -58,5 +58,30 @@ func SchemaFor[T any]() (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(s)
+	b, err := json.Marshal(s)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeSchema(b)
+}
+
+// normalizeSchema ensures object schemas always carry a "properties" key.
+// Some providers (e.g. OpenAI) reject object schemas that omit it entirely.
+func normalizeSchema(schema json.RawMessage) (json.RawMessage, error) {
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(schema, &m); err != nil {
+		return schema, nil
+	}
+	typeVal, ok := m["type"]
+	if !ok {
+		return schema, nil
+	}
+	var typStr string
+	if err := json.Unmarshal(typeVal, &typStr); err != nil || typStr != "object" {
+		return schema, nil
+	}
+	if _, hasProps := m["properties"]; !hasProps {
+		m["properties"] = json.RawMessage(`{}`)
+	}
+	return json.Marshal(m)
 }

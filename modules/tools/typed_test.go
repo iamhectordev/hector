@@ -17,7 +17,7 @@ type addInput struct {
 }
 
 func TestTypedToolNew(t *testing.T) {
-	tool, err := tools.New[addInput, int](
+	tool, err := tools.New(
 		"math.add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -36,7 +36,7 @@ func TestTypedToolNew(t *testing.T) {
 }
 
 func TestTypedToolRunOK(t *testing.T) {
-	tool, err := tools.New[addInput, int](
+	tool, err := tools.New(
 		"math.add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -55,7 +55,7 @@ func TestTypedToolRunOK(t *testing.T) {
 }
 
 func TestTypedToolRunError(t *testing.T) {
-	tool, err := tools.New[addInput, int](
+	tool, err := tools.New(
 		"math.add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -75,7 +75,7 @@ func TestTypedToolRunError(t *testing.T) {
 }
 
 func TestTypedToolRunInvalidArgs(t *testing.T) {
-	tool, err := tools.New[addInput, int](
+	tool, err := tools.New(
 		"math.add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -93,8 +93,22 @@ func TestTypedToolRunInvalidArgs(t *testing.T) {
 	require.NotEmpty(t, env["message"])
 }
 
+func TestTypedToolEmptyInputSchemaHasProperties(t *testing.T) {
+	tool, err := tools.New(
+		"no.input",
+		"A tool with no inputs.",
+		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
+	)
+	require.NoError(t, err)
+
+	var schema map[string]any
+	require.NoError(t, json.Unmarshal(tool.Definition().Parameters, &schema))
+	_, hasProps := schema["properties"]
+	require.True(t, hasProps, "object schema must include properties key for OpenAI compatibility")
+}
+
 func TestTypedToolSatisfiesTool(t *testing.T) {
-	tool, err := tools.New[addInput, int](
+	tool, err := tools.New(
 		"math.add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) { return 0, nil },
@@ -105,7 +119,7 @@ func TestTypedToolSatisfiesTool(t *testing.T) {
 }
 
 func TestTypedToolRegistersInRegistry(t *testing.T) {
-	tool, err := tools.New[addInput, int](
+	tool, err := tools.New(
 		"math.add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) { return in.A + in.B, nil },
