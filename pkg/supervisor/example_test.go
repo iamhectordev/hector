@@ -14,10 +14,10 @@ type exampleModule struct {
 	name string
 }
 
-func (m exampleModule) Name() string                      { return m.name }
-func (m exampleModule) Init(ctx context.Context) error    { return nil }
-func (m exampleModule) Start(ctx context.Context) error   { <-ctx.Done(); return nil }
-func (m exampleModule) Stop(ctx context.Context) error    { return nil }
+func (m exampleModule) Name() string                    { return m.name }
+func (m exampleModule) Init(ctx context.Context) error  { return nil }
+func (m exampleModule) Start(ctx context.Context) error { <-ctx.Done(); return nil }
+func (m exampleModule) Stop(ctx context.Context) error  { return nil }
 
 func Example_minimal() {
 	s, err := supervisor.New([]supervisor.Module{

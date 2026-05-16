@@ -15,14 +15,20 @@ import (
 
 // Module receives messages from surfaces and dispatches them to the runner.
 type Module struct {
-	bus    *waffle.EventBus
-	runner Runner
-	out    io.Writer
-	logger *slog.Logger
+	bus        *waffle.EventBus
+	runner     Runner
+	baseSystem string
+	out        io.Writer
+	logger     *slog.Logger
 }
 
 // Option configures a Module.
 type Option func(*Module)
+
+// WithBaseSystem sets the base system prompt text.
+func WithBaseSystem(prompt string) Option {
+	return func(m *Module) { m.baseSystem = prompt }
+}
 
 // WithWriter sets where replies are printed. Defaults to stdout.
 func WithWriter(w io.Writer) Option {
@@ -69,8 +75,8 @@ func (m *Module) Start(ctx context.Context) error {
 
 func (m *Module) Stop(context.Context) error { return nil }
 
-func (m *Module) handle(ctx context.Context, text string) error {
-	reply, err := m.runner.Run(ctx, []*schema.Message{schema.UserMessage(text)})
+func (m *Module) handle(ctx context.Context, system string, text string) error {
+	reply, err := m.runner.Run(ctx, system, []*schema.Message{schema.UserMessage(text)})
 	if err != nil {
 		return err
 	}

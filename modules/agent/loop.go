@@ -13,7 +13,7 @@ import (
 
 // Runner executes one agent turn and returns the assistant reply.
 type Runner interface {
-	Run(ctx context.Context, messages []*schema.Message) (*schema.Message, error)
+	Run(ctx context.Context, system string, messages []*schema.Message) (*schema.Message, error)
 }
 
 // ToolRuntime provides the model-facing tool catalog and executes tool calls.
@@ -32,7 +32,6 @@ type SessionStore interface {
 type Loop struct {
 	completer llm.Completer
 	tools     ToolRuntime
-	system    string
 	log       *slog.Logger
 	sessions  SessionStore
 }
@@ -43,11 +42,6 @@ type LoopOption func(*Loop)
 // WithTools attaches tools to the loop.
 func WithTools(t ToolRuntime) LoopOption {
 	return func(l *Loop) { l.tools = t }
-}
-
-// WithSystem sets the system prompt for every turn.
-func WithSystem(prompt string) LoopOption {
-	return func(l *Loop) { l.system = prompt }
 }
 
 // WithLogger sets the logger used for debug output.
@@ -68,11 +62,11 @@ func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
 	return l
 }
 
-func (l *Loop) Run(ctx context.Context, messages []*schema.Message) (*schema.Message, error) {
+func (l *Loop) Run(ctx context.Context, system string, messages []*schema.Message) (*schema.Message, error) {
 	recordedThrough := 0
 
 	for {
-		req := schema.CompletionRequest{System: l.system, Messages: messages}
+		req := schema.CompletionRequest{System: system, Messages: messages}
 		if l.tools != nil {
 			req.Tools = l.tools.Definitions()
 		}

@@ -14,9 +14,9 @@ import (
 // Config is the typed application config loaded by klee.
 type Config struct {
 	kleelog.Config `yaml:"log"`
-	DB    dbsqlite.Config `yaml:"db"`
-	LLM   llm.Config      `yaml:"llm"`
-	Slack slack.Config    `yaml:"slack"`
+	DB             dbsqlite.Config `yaml:"db"`
+	LLM            llm.Config      `yaml:"llm"`
+	Slack          slack.Config    `yaml:"slack"`
 }
 
 func configFromContext(ctx context.Context) (*Config, error) {

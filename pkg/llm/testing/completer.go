@@ -18,9 +18,10 @@ type turn struct {
 // Completer is a scripted llm.Completer for use in tests.
 // Each Complete call consumes the next scripted turn in order.
 type Completer struct {
-	t     *testing.T
-	turns []turn
-	i     int
+	t        *testing.T
+	turns    []turn
+	i        int
+	Requests []schema.CompletionRequest
 }
 
 // NewCompleter returns a Completer that plays back the given turns.
@@ -30,8 +31,9 @@ func NewCompleter(t *testing.T, turns ...turn) *Completer {
 	return &Completer{t: t, turns: turns}
 }
 
-func (c *Completer) Complete(_ context.Context, _ schema.CompletionRequest) (*schema.Message, error) {
+func (c *Completer) Complete(_ context.Context, req schema.CompletionRequest) (*schema.Message, error) {
 	c.t.Helper()
+	c.Requests = append(c.Requests, req)
 	if c.i >= len(c.turns) {
 		c.t.Fatalf("llmtest: unexpected Complete call (scripted %d turns, got call #%d)", len(c.turns), c.i+1)
 		return nil, nil

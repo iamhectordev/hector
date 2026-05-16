@@ -31,7 +31,7 @@ func (f funcTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 
 func TestLoop_Run_StopsOnFinishReasonStop(t *testing.T) {
 	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Stop("hi")))
-	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "hi", reply.Content)
 	require.Equal(t, schema.RoleAssistant, reply.Role)
@@ -40,14 +40,14 @@ func TestLoop_Run_StopsOnFinishReasonStop(t *testing.T) {
 func TestLoop_Run_PropagatesCompleterError(t *testing.T) {
 	boom := errors.New("llm down")
 	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Error(boom)))
-	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorIs(t, err, boom)
 	require.Nil(t, reply)
 }
 
 func TestLoop_Run_NilReplyIsError(t *testing.T) {
 	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Nil()))
-	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
 	require.Error(t, err)
 	require.Nil(t, reply)
 }
@@ -56,7 +56,7 @@ func TestLoop_Run_UnknownFinishReasonIsError(t *testing.T) {
 	m := schema.AssistantMessage("")
 	m.FinishReason = "content_filter"
 	loop := agent.NewLoop(&rawCompleter{msg: m})
-	_, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
+	_, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorContains(t, err, "content_filter")
 }
 
@@ -83,7 +83,7 @@ func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
 		agent.WithTools(registry),
 	)
 
-	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "done", reply.Content)
 	require.Equal(t, "ping", got)
@@ -112,7 +112,7 @@ func TestLoop_Run_MultipleToolRoundsThenStop(t *testing.T) {
 		agent.WithTools(registry),
 	)
 
-	reply, err := loop.Run(t.Context(), []*schema.Message{schema.UserMessage("go")})
+	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("go")})
 	require.NoError(t, err)
 	require.Equal(t, "final", reply.Content)
 	require.Equal(t, 2, calls)
@@ -126,7 +126,7 @@ func TestLoop_Run_RecordsUserMessageAndAssistantReply(t *testing.T) {
 	)
 	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
 
-	reply, err := loop.Run(ctx, []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "hi", reply.Content)
 
@@ -158,7 +158,7 @@ func TestLoop_Run_RecordsToolCallTranscriptInOrder(t *testing.T) {
 	)
 	ctx := session.With(t.Context(), session.Session{SourceURI: "slack://C123/1"})
 
-	_, err = loop.Run(ctx, []*schema.Message{schema.UserMessage("hello")})
+	_, err = loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 
 	require.Equal(t, []schema.Message{
@@ -178,7 +178,7 @@ func TestLoop_Run_DoesNotRecordWhenCompleteFails(t *testing.T) {
 	)
 	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
 
-	_, err := loop.Run(ctx, []*schema.Message{schema.UserMessage("hello")})
+	_, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorIs(t, err, boom)
 	require.Empty(t, store.messages)
 }
@@ -192,7 +192,7 @@ func TestLoop_Run_ReturnsRecordError(t *testing.T) {
 	)
 	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
 
-	_, err := loop.Run(ctx, []*schema.Message{schema.UserMessage("hello")})
+	_, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorIs(t, err, boom)
 }
 

@@ -38,16 +38,17 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	registry, err := tools.NewRegistry(replyRouter)
 	require.NoError(t, err)
 
+	completer := llmtest.NewCompleter(t,
+		llmtest.ToolCalls(llmtest.Call("c1", "reply", `{"text":"hello back"}`)),
+		llmtest.Stop(""),
+	)
 	loop := agent.NewLoop(
-		llmtest.NewCompleter(t,
-			llmtest.ToolCalls(llmtest.Call("c1", "reply", `{"text":"hello back"}`)),
-			llmtest.Stop(""),
-		),
+		completer,
 		agent.WithTools(registry),
 	)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, loop),
+		agent.NewModule(bus, loop, agent.WithBaseSystem(agent.SystemPrompt)),
 		slackMod,
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
@@ -69,5 +70,11 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	require.Equal(t, "D123", call.Get("channel"))
 	require.Equal(t, "hello back", call.Get("text"))
 	require.Equal(t, "1610241741.000200", call.Get("thread_ts"))
-}
 
+	require.NotEmpty(t, completer.Requests)
+	sys := completer.Requests[0].System
+	require.Contains(t, sys, `<conversation platform="slack" channel_type="dm" channel_id="D123" thread_ts="1610241741.000200">`)
+	require.Contains(t, sys, `<participants>
+    <participant id="U222"></participant>
+  </participants>`)
+}
