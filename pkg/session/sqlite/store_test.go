@@ -3,6 +3,7 @@ package sqlite_test
 import (
 	"database/sql"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -102,6 +103,59 @@ ORDER BY s.source_uri
 	}, got)
 }
 
+func TestStoreMessagesReturnsRecordedMessagesInOrder(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+	migrate(t, db)
+
+	store := sqlite.NewStore(db)
+	require.NoError(t, store.Record(ctx, "slack://C123/1", []*schema.Message{
+		schema.UserMessage("one"),
+		schema.AssistantMessage("two"),
+	}))
+	require.NoError(t, store.Record(ctx, "slack://C999/1", []*schema.Message{
+		schema.UserMessage("other"),
+	}))
+
+	got, err := store.Messages(ctx, "slack://C123/1")
+	require.NoError(t, err)
+	require.Equal(t, []*schema.Message{
+		schema.UserMessage("one"),
+		schema.AssistantMessage("two"),
+	}, got)
+}
+
+func TestStoreMessagesSurvivesReopen(t *testing.T) {
+	ctx := t.Context()
+	path := filepath.Join(t.TempDir(), "session.db")
+	dsn := "file:" + filepath.ToSlash(path)
+
+	db1, err := sql.Open("sqlite", dsn)
+	require.NoError(t, err)
+	db1.SetMaxOpenConns(1)
+	migrate(t, db1)
+
+	store1 := sqlite.NewStore(db1)
+	require.NoError(t, store1.Record(ctx, "slack://C123/1", []*schema.Message{
+		schema.UserMessage("before restart"),
+		schema.AssistantMessage("persisted"),
+	}))
+	require.NoError(t, db1.Close())
+
+	db2, err := sql.Open("sqlite", dsn)
+	require.NoError(t, err)
+	db2.SetMaxOpenConns(1)
+	t.Cleanup(func() { require.NoError(t, db2.Close()) })
+
+	store2 := sqlite.NewStore(db2)
+	got, err := store2.Messages(ctx, "slack://C123/1")
+	require.NoError(t, err)
+	require.Equal(t, []*schema.Message{
+		schema.UserMessage("before restart"),
+		schema.AssistantMessage("persisted"),
+	}, got)
+}
+
 func TestStoreRecordPersistsFullMessageJSON(t *testing.T) {
 	ctx := t.Context()
 	db := openTestDB(t)
@@ -130,6 +184,24 @@ FROM session_records
 	var got schema.Message
 	require.NoError(t, json.Unmarshal([]byte(raw), &got))
 	require.Equal(t, *msg, got)
+}
+
+func TestStoreRecordOmitsEmptyMessageJSONFields(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+	migrate(t, db)
+
+	store := sqlite.NewStore(db)
+	require.NoError(t, store.Record(ctx, "slack://C123/1", []*schema.Message{
+		schema.UserMessage("hello"),
+	}))
+
+	var raw string
+	require.NoError(t, db.QueryRowContext(ctx, `
+SELECT message_json
+FROM session_records
+`).Scan(&raw))
+	require.JSONEq(t, `{"Role":"user","Content":"hello"}`, raw)
 }
 
 func TestStoreGetOrCreateReturnsExistingSession(t *testing.T) {

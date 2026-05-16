@@ -21,11 +21,11 @@ const (
 
 // Message is one turn in a model-facing conversation.
 type Message struct {
-	Role         Role
-	Content      string
-	ToolCalls    []ToolCall
-	ToolCallID   string
-	FinishReason FinishReason
+	Role         Role         `json:"Role"`
+	Content      string       `json:"Content,omitempty"`
+	ToolCalls    []ToolCall   `json:"ToolCalls,omitempty"`
+	ToolCallID   string       `json:"ToolCallID,omitempty"`
+	FinishReason FinishReason `json:"FinishReason,omitempty"`
 }
 
 // SystemMessage returns a system-role message.

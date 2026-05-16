@@ -47,6 +47,43 @@ func (s *Store) GetOrCreate(ctx context.Context, sourceURI string) (session.Stor
 	return stored, nil
 }
 
+// Messages returns the recorded transcript for sourceURI in append order.
+func (s *Store) Messages(ctx context.Context, sourceURI string) ([]*schema.Message, error) {
+	if strings.TrimSpace(sourceURI) == "" {
+		return nil, fmt.Errorf("session/sqlite: source URI is required")
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT r.message_json
+FROM session_records r
+JOIN session_sessions s ON s.id = r.session_id
+WHERE s.source_uri = ?
+ORDER BY r.seq ASC
+`, sourceURI)
+	if err != nil {
+		return nil, fmt.Errorf("session/sqlite: list messages: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []*schema.Message
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, fmt.Errorf("session/sqlite: scan message: %w", err)
+		}
+
+		var msg schema.Message
+		if err := json.Unmarshal([]byte(raw), &msg); err != nil {
+			return nil, fmt.Errorf("session/sqlite: unmarshal message: %w", err)
+		}
+		out = append(out, &msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("session/sqlite: list messages rows: %w", err)
+	}
+	return out, nil
+}
+
 // Record appends messages to the transcript for sourceURI.
 func (s *Store) Record(ctx context.Context, sourceURI string, messages []*schema.Message) error {
 	if len(messages) == 0 {

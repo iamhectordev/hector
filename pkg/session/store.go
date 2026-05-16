@@ -10,6 +10,7 @@ import (
 // Store persists the model-facing transcript for a source session.
 type Store interface {
 	GetOrCreate(ctx context.Context, sourceURI string) (StoredSession, error)
+	Messages(ctx context.Context, sourceURI string) ([]*schema.Message, error)
 	Record(ctx context.Context, sourceURI string, messages []*schema.Message) error
 }
 

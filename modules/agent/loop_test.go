@@ -137,6 +137,59 @@ func TestLoop_Run_RecordsUserMessageAndAssistantReply(t *testing.T) {
 	require.Equal(t, []string{"tui://stdout", "tui://stdout"}, store.sourceURIs)
 }
 
+func TestLoop_Run_LoadsSessionHistory(t *testing.T) {
+	store := &recordingSessionStore{
+		history: []*schema.Message{
+			schema.UserMessage("previous user"),
+			schema.AssistantMessage("previous assistant"),
+		},
+	}
+	completer := &requestCompleter{
+		reply: &schema.Message{
+			Role:         schema.RoleAssistant,
+			Content:      "current assistant",
+			FinishReason: schema.FinishReasonStop,
+		},
+	}
+	loop := agent.NewLoop(completer, agent.WithSessionStore(store))
+	ctx := session.With(t.Context(), session.Session{SourceURI: "slack://C123/1"})
+
+	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("current user")})
+	require.NoError(t, err)
+	require.Equal(t, "current assistant", reply.Content)
+
+	require.Len(t, completer.requests, 1)
+	require.Equal(t, []*schema.Message{
+		schema.UserMessage("previous user"),
+		schema.AssistantMessage("previous assistant"),
+		schema.UserMessage("current user"),
+	}, completer.requests[0].Messages)
+	require.Equal(t, []schema.Message{
+		{Role: schema.RoleUser, Content: "current user"},
+		{Role: schema.RoleAssistant, Content: "current assistant", FinishReason: schema.FinishReasonStop},
+	}, store.messages)
+}
+
+func TestLoop_Run_ContinuesWithoutHistoryWhenSessionStoreFails(t *testing.T) {
+	store := &recordingSessionStore{messagesErr: errors.New("db unavailable")}
+	completer := &requestCompleter{
+		reply: &schema.Message{
+			Role:         schema.RoleAssistant,
+			Content:      "assistant",
+			FinishReason: schema.FinishReasonStop,
+		},
+	}
+	loop := agent.NewLoop(completer, agent.WithSessionStore(store))
+	ctx := session.With(t.Context(), session.Session{SourceURI: "slack://C123/1"})
+
+	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	require.NoError(t, err)
+	require.Equal(t, "assistant", reply.Content)
+
+	require.Len(t, completer.requests, 1)
+	require.Equal(t, []*schema.Message{schema.UserMessage("hello")}, completer.requests[0].Messages)
+}
+
 func TestLoop_Run_RecordsToolCallTranscriptInOrder(t *testing.T) {
 	store := &recordingSessionStore{}
 	call := llmtest.Call("call_1", "echo", `{"text":"ping"}`)
@@ -183,17 +236,17 @@ func TestLoop_Run_DoesNotRecordWhenCompleteFails(t *testing.T) {
 	require.Empty(t, store.messages)
 }
 
-func TestLoop_Run_ReturnsRecordError(t *testing.T) {
-	boom := errors.New("record failed")
-	store := &recordingSessionStore{err: boom}
+func TestLoop_Run_ContinuesWhenRecordFails(t *testing.T) {
+	store := &recordingSessionStore{err: errors.New("record failed")}
 	loop := agent.NewLoop(
 		llmtest.NewCompleter(t, llmtest.Stop("hi")),
 		agent.WithSessionStore(store),
 	)
 	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
 
-	_, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
-	require.ErrorIs(t, err, boom)
+	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	require.NoError(t, err)
+	require.Equal(t, "hi", reply.Content)
 }
 
 // rawCompleter returns a fixed message, used to test unknown finish reasons.
@@ -204,9 +257,18 @@ func (r *rawCompleter) Complete(_ context.Context, _ schema.CompletionRequest) (
 }
 
 type recordingSessionStore struct {
-	err        error
-	sourceURIs []string
-	messages   []schema.Message
+	err         error
+	messagesErr error
+	history     []*schema.Message
+	sourceURIs  []string
+	messages    []schema.Message
+}
+
+func (s *recordingSessionStore) Messages(_ context.Context, _ string) ([]*schema.Message, error) {
+	if s.messagesErr != nil {
+		return nil, s.messagesErr
+	}
+	return s.history, nil
 }
 
 func (s *recordingSessionStore) Record(_ context.Context, sourceURI string, messages []*schema.Message) error {
@@ -218,4 +280,14 @@ func (s *recordingSessionStore) Record(_ context.Context, sourceURI string, mess
 		s.messages = append(s.messages, *msg)
 	}
 	return nil
+}
+
+type requestCompleter struct {
+	reply    *schema.Message
+	requests []schema.CompletionRequest
+}
+
+func (c *requestCompleter) Complete(_ context.Context, req schema.CompletionRequest) (*schema.Message, error) {
+	c.requests = append(c.requests, req)
+	return c.reply, nil
 }
