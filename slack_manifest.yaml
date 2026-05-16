@@ -16,6 +16,10 @@ oauth_config:
       - im:history
       - im:read
       - chat:write
+      - users:read
+      - channels:read
+      - groups:read
+      - mpim:read
   pkce_enabled: false
 settings:
   event_subscriptions:
