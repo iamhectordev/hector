@@ -1,6 +1,7 @@
 Use semantic commits with scope where relevant.
 Do not code anything until the user confirms it.
 All designs go through the user. Do not design anything alone.
+Run mise run {lint,test} after each change.
 
 Before building any slice:
 1. Identify which golden paths apply (if any) — see flow/paths/

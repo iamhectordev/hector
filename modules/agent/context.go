@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
@@ -31,7 +32,44 @@ func NewSessionContext(store session.Store, sourceURI string) (*SessionContext, 
 }
 
 func (c *SessionContext) Messages(ctx context.Context) ([]*schema.Message, error) {
-	return c.store.Messages(ctx, c.sourceURI)
+	messages, err := c.store.Messages(ctx, c.sourceURI)
+	if err != nil {
+		return nil, err
+	}
+	repaired, injected := repairHistory(messages)
+	if len(injected) > 0 {
+		if err := c.store.Record(ctx, c.sourceURI, injected); err != nil {
+			slog.WarnContext(ctx, "agent: failed to persist repaired session history", "err", err)
+		}
+	}
+	return repaired, nil
+}
+
+const interruptedToolResult = "interrupted: the process restarted before this tool call completed — please retry if needed"
+
+func repairHistory(messages []*schema.Message) (repaired []*schema.Message, injected []*schema.Message) {
+	repaired = make([]*schema.Message, 0, len(messages))
+	for i, msg := range messages {
+		repaired = append(repaired, msg)
+		if msg.Role != schema.RoleAssistant || len(msg.ToolCalls) == 0 {
+			continue
+		}
+		satisfied := make(map[string]bool)
+		for _, next := range messages[i+1:] {
+			if next.Role == schema.RoleTool {
+				satisfied[next.ToolCallID] = true
+			}
+		}
+		for _, call := range msg.ToolCalls {
+			if satisfied[call.ID] {
+				continue
+			}
+			synthetic := schema.ToolResultMessage(call.ID, interruptedToolResult)
+			repaired = append(repaired, synthetic)
+			injected = append(injected, synthetic)
+		}
+	}
+	return repaired, injected
 }
 
 func (c *SessionContext) Record(ctx context.Context, messages []*schema.Message) error {
