@@ -288,7 +288,13 @@ func (d *reactionDispatcher) clearInFlight(id string) {
 }
 
 func (d *reactionDispatcher) work() {
-	for job := range d.jobs {
+	d.mu.Lock()
+	jobs := d.jobs
+	d.mu.Unlock()
+	if jobs == nil {
+		return
+	}
+	for job := range jobs {
 		d.run(job)
 	}
 }

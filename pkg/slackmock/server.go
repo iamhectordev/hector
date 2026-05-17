@@ -227,12 +227,17 @@ func buildPayload(event any) (json.RawMessage, error) {
 	}
 	innerMap["type"] = innerType
 
+	callbackType := "event_callback"
+	if eventType, ok := innerMap["type"].(string); ok && eventType == "message" {
+		callbackType = "event_callback"
+	}
+
 	return json.Marshal(map[string]any{
 		"token":      "verification-token",
 		"team_id":    "T111",
 		"api_app_id": "A111",
 		"event":      innerMap,
-		"type":       "event_callback",
+		"type":       callbackType,
 		"event_id":   "Ev111",
 		"event_time": 1610241741,
 	})

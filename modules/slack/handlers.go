@@ -83,7 +83,7 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	p.Go(func() {
 		user, uErr := m.api.GetUserInfoContext(ctx, e.User)
 		if uErr != nil {
-			m.log(ctx).DebugContext(ctx, "failed to get user info", "err", uErr, "user", e.User)
+			m.log(ctx).InfoContext(ctx, "failed to get user info", "err", uErr, "user", e.User)
 			return
 		}
 		name := user.Profile.DisplayName
@@ -100,7 +100,7 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 			IncludeNumMembers: true,
 		})
 		if cErr != nil {
-			m.log(ctx).DebugContext(ctx, "failed to get conversation info", "err", cErr, "channel", e.Channel)
+			m.log(ctx).InfoContext(ctx, "failed to get conversation info", "err", cErr, "channel", e.Channel)
 			return
 		}
 		data.Channel.Name = channel.Name

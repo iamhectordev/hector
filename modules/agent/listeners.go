@@ -5,6 +5,7 @@ import (
 
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -28,6 +29,7 @@ type UserMessage struct {
 
 func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageReceivedData]) error {
 	sourceURI := tui.NewOriginURI()
+	ctx = session.With(ctx, session.Session{SourceURI: sourceURI})
 	text := e.Data().Text
 
 	tuiCtx := TUIContext{Platform: "tui"}
@@ -63,6 +65,7 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 	data := e.Data()
 	sourceURI := slack.NewOriginURI(data.Channel.ID, data.ThreadTS)
+	ctx = session.With(ctx, session.Session{SourceURI: sourceURI})
 	text := data.Text
 
 	slackCtx := SlackContext{
