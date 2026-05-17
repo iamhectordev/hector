@@ -89,11 +89,14 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	loop := agent.NewLoop(completer,
 		agent.WithTools(toolRegistry),
 		agent.WithLogger(logger.With("component", "loop")),
-		agent.WithSessionStore(sessionsqlite.NewStore(db)),
 	)
+	sessionStore := sessionsqlite.NewStore(db)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, loop, agent.WithBaseSystem(agent.SystemPrompt)),
+		agent.NewModule(bus, loop,
+			agent.WithBaseSystem(agent.SystemPrompt),
+			agent.WithSessionStore(sessionStore),
+		),
 		toolsModule,
 		slackModule,
 	},

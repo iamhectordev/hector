@@ -10,7 +10,6 @@ import (
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
-	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +30,7 @@ func (f funcTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 
 func TestLoop_Run_StopsOnFinishReasonStop(t *testing.T) {
 	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Stop("hi")))
-	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), &recordingAgentContext{}, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "hi", reply.Content)
 	require.Equal(t, schema.RoleAssistant, reply.Role)
@@ -40,14 +39,14 @@ func TestLoop_Run_StopsOnFinishReasonStop(t *testing.T) {
 func TestLoop_Run_PropagatesCompleterError(t *testing.T) {
 	boom := errors.New("llm down")
 	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Error(boom)))
-	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), &recordingAgentContext{}, "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorIs(t, err, boom)
 	require.Nil(t, reply)
 }
 
 func TestLoop_Run_NilReplyIsError(t *testing.T) {
 	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Nil()))
-	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), &recordingAgentContext{}, "", []*schema.Message{schema.UserMessage("hello")})
 	require.Error(t, err)
 	require.Nil(t, reply)
 }
@@ -56,8 +55,15 @@ func TestLoop_Run_UnknownFinishReasonIsError(t *testing.T) {
 	m := schema.AssistantMessage("")
 	m.FinishReason = "content_filter"
 	loop := agent.NewLoop(&rawCompleter{msg: m})
-	_, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
+	_, err := loop.Run(t.Context(), &recordingAgentContext{}, "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorContains(t, err, "content_filter")
+}
+
+func TestLoop_Run_RequiresAgentContext(t *testing.T) {
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Stop("hi")))
+	reply, err := loop.Run(t.Context(), nil, "", []*schema.Message{schema.UserMessage("hello")})
+	require.ErrorContains(t, err, "context is required")
+	require.Nil(t, reply)
 }
 
 func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
@@ -83,7 +89,7 @@ func TestLoop_Run_ExecutesToolAndContinues(t *testing.T) {
 		agent.WithTools(registry),
 	)
 
-	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), &recordingAgentContext{}, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "done", reply.Content)
 	require.Equal(t, "ping", got)
@@ -112,33 +118,28 @@ func TestLoop_Run_MultipleToolRoundsThenStop(t *testing.T) {
 		agent.WithTools(registry),
 	)
 
-	reply, err := loop.Run(t.Context(), "", []*schema.Message{schema.UserMessage("go")})
+	reply, err := loop.Run(t.Context(), &recordingAgentContext{}, "", []*schema.Message{schema.UserMessage("go")})
 	require.NoError(t, err)
 	require.Equal(t, "final", reply.Content)
 	require.Equal(t, 2, calls)
 }
 
 func TestLoop_Run_RecordsUserMessageAndAssistantReply(t *testing.T) {
-	store := &recordingSessionStore{}
-	loop := agent.NewLoop(
-		llmtest.NewCompleter(t, llmtest.Stop("hi")),
-		agent.WithSessionStore(store),
-	)
-	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
+	agentCtx := &recordingAgentContext{}
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Stop("hi")))
 
-	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "hi", reply.Content)
 
 	require.Equal(t, []schema.Message{
 		{Role: schema.RoleUser, Content: "hello"},
 		{Role: schema.RoleAssistant, Content: "hi", FinishReason: schema.FinishReasonStop},
-	}, store.messages)
-	require.Equal(t, []string{"tui://stdout", "tui://stdout"}, store.sourceURIs)
+	}, agentCtx.messages)
 }
 
 func TestLoop_Run_LoadsSessionHistory(t *testing.T) {
-	store := &recordingSessionStore{
+	agentCtx := &recordingAgentContext{
 		history: []*schema.Message{
 			schema.UserMessage("previous user"),
 			schema.AssistantMessage("previous assistant"),
@@ -151,10 +152,9 @@ func TestLoop_Run_LoadsSessionHistory(t *testing.T) {
 			FinishReason: schema.FinishReasonStop,
 		},
 	}
-	loop := agent.NewLoop(completer, agent.WithSessionStore(store))
-	ctx := session.With(t.Context(), session.Session{SourceURI: "slack://C123/1"})
+	loop := agent.NewLoop(completer)
 
-	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("current user")})
+	reply, err := loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("current user")})
 	require.NoError(t, err)
 	require.Equal(t, "current assistant", reply.Content)
 
@@ -167,11 +167,11 @@ func TestLoop_Run_LoadsSessionHistory(t *testing.T) {
 	require.Equal(t, []schema.Message{
 		{Role: schema.RoleUser, Content: "current user"},
 		{Role: schema.RoleAssistant, Content: "current assistant", FinishReason: schema.FinishReasonStop},
-	}, store.messages)
+	}, agentCtx.messages)
 }
 
 func TestLoop_Run_ContinuesWithoutHistoryWhenSessionStoreFails(t *testing.T) {
-	store := &recordingSessionStore{messagesErr: errors.New("db unavailable")}
+	agentCtx := &recordingAgentContext{messagesErr: errors.New("db unavailable")}
 	completer := &requestCompleter{
 		reply: &schema.Message{
 			Role:         schema.RoleAssistant,
@@ -179,10 +179,9 @@ func TestLoop_Run_ContinuesWithoutHistoryWhenSessionStoreFails(t *testing.T) {
 			FinishReason: schema.FinishReasonStop,
 		},
 	}
-	loop := agent.NewLoop(completer, agent.WithSessionStore(store))
-	ctx := session.With(t.Context(), session.Session{SourceURI: "slack://C123/1"})
+	loop := agent.NewLoop(completer)
 
-	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "assistant", reply.Content)
 
@@ -191,7 +190,7 @@ func TestLoop_Run_ContinuesWithoutHistoryWhenSessionStoreFails(t *testing.T) {
 }
 
 func TestLoop_Run_RecordsToolCallTranscriptInOrder(t *testing.T) {
-	store := &recordingSessionStore{}
+	agentCtx := &recordingAgentContext{}
 	call := llmtest.Call("call_1", "echo", `{"text":"ping"}`)
 	echo := funcTool{
 		name:   "echo",
@@ -207,11 +206,9 @@ func TestLoop_Run_RecordsToolCallTranscriptInOrder(t *testing.T) {
 	loop := agent.NewLoop(
 		llmtest.NewCompleter(t, llmtest.ToolCalls(call), llmtest.Stop("done")),
 		agent.WithTools(registry),
-		agent.WithSessionStore(store),
 	)
-	ctx := session.With(t.Context(), session.Session{SourceURI: "slack://C123/1"})
 
-	_, err = loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	_, err = loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 
 	require.Equal(t, []schema.Message{
@@ -219,32 +216,24 @@ func TestLoop_Run_RecordsToolCallTranscriptInOrder(t *testing.T) {
 		{Role: schema.RoleAssistant, FinishReason: schema.FinishReasonToolCalls, ToolCalls: []schema.ToolCall{call}},
 		{Role: schema.RoleTool, Content: "pong", ToolCallID: "call_1"},
 		{Role: schema.RoleAssistant, Content: "done", FinishReason: schema.FinishReasonStop},
-	}, store.messages)
+	}, agentCtx.messages)
 }
 
 func TestLoop_Run_DoesNotRecordWhenCompleteFails(t *testing.T) {
-	store := &recordingSessionStore{}
+	agentCtx := &recordingAgentContext{}
 	boom := errors.New("llm down")
-	loop := agent.NewLoop(
-		llmtest.NewCompleter(t, llmtest.Error(boom)),
-		agent.WithSessionStore(store),
-	)
-	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Error(boom)))
 
-	_, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	_, err := loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.ErrorIs(t, err, boom)
-	require.Empty(t, store.messages)
+	require.Empty(t, agentCtx.messages)
 }
 
 func TestLoop_Run_ContinuesWhenRecordFails(t *testing.T) {
-	store := &recordingSessionStore{err: errors.New("record failed")}
-	loop := agent.NewLoop(
-		llmtest.NewCompleter(t, llmtest.Stop("hi")),
-		agent.WithSessionStore(store),
-	)
-	ctx := session.With(t.Context(), session.Session{SourceURI: "tui://stdout"})
+	agentCtx := &recordingAgentContext{err: errors.New("record failed")}
+	loop := agent.NewLoop(llmtest.NewCompleter(t, llmtest.Stop("hi")))
 
-	reply, err := loop.Run(ctx, "", []*schema.Message{schema.UserMessage("hello")})
+	reply, err := loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("hello")})
 	require.NoError(t, err)
 	require.Equal(t, "hi", reply.Content)
 }
@@ -256,28 +245,26 @@ func (r *rawCompleter) Complete(_ context.Context, _ schema.CompletionRequest) (
 	return r.msg, nil
 }
 
-type recordingSessionStore struct {
+type recordingAgentContext struct {
 	err         error
 	messagesErr error
 	history     []*schema.Message
-	sourceURIs  []string
 	messages    []schema.Message
 }
 
-func (s *recordingSessionStore) Messages(_ context.Context, _ string) ([]*schema.Message, error) {
-	if s.messagesErr != nil {
-		return nil, s.messagesErr
+func (c *recordingAgentContext) Messages(context.Context) ([]*schema.Message, error) {
+	if c.messagesErr != nil {
+		return nil, c.messagesErr
 	}
-	return s.history, nil
+	return c.history, nil
 }
 
-func (s *recordingSessionStore) Record(_ context.Context, sourceURI string, messages []*schema.Message) error {
-	if s.err != nil {
-		return s.err
+func (c *recordingAgentContext) Record(_ context.Context, messages []*schema.Message) error {
+	if c.err != nil {
+		return c.err
 	}
 	for _, msg := range messages {
-		s.sourceURIs = append(s.sourceURIs, sourceURI)
-		s.messages = append(s.messages, *msg)
+		c.messages = append(c.messages, *msg)
 	}
 	return nil
 }

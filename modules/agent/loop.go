@@ -3,20 +3,16 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
-	"github.com/iamhectordev/hector/pkg/session"
 )
-
-var errNoSession = errors.New("no session in context")
 
 // Runner executes one agent turn and returns the assistant reply.
 type Runner interface {
-	Run(ctx context.Context, system string, messages []*schema.Message) (*schema.Message, error)
+	Run(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) (*schema.Message, error)
 }
 
 // ToolRuntime provides the model-facing tool catalog and executes tool calls.
@@ -25,19 +21,12 @@ type ToolRuntime interface {
 	Run(ctx context.Context, name string, args json.RawMessage) (string, error)
 }
 
-// SessionStore records model-facing messages for a source session.
-type SessionStore interface {
-	Messages(ctx context.Context, sourceURI string) ([]*schema.Message, error)
-	Record(ctx context.Context, sourceURI string, messages []*schema.Message) error
-}
-
 // Loop runs the agent turn: calls the model, executes any tool calls, and repeats
 // until the model stops or returns a plain text response.
 type Loop struct {
 	completer llm.Completer
 	tools     ToolRuntime
 	log       *slog.Logger
-	sessions  SessionStore
 }
 
 // LoopOption configures a Loop.
@@ -53,11 +42,6 @@ func WithLogger(logger *slog.Logger) LoopOption {
 	return func(l *Loop) { l.log = logger }
 }
 
-// WithSessionStore records the model-facing transcript for each source session.
-func WithSessionStore(store SessionStore) LoopOption {
-	return func(l *Loop) { l.sessions = store }
-}
-
 func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
 	l := &Loop{completer: c, log: slog.Default()}
 	for _, opt := range opts {
@@ -66,14 +50,18 @@ func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
 	return l
 }
 
-func (l *Loop) Run(ctx context.Context, system string, messages []*schema.Message) (*schema.Message, error) {
-	history := l.history(ctx)
+func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) (*schema.Message, error) {
+	if agentCtx == nil {
+		return nil, fmt.Errorf("agent: context is required")
+	}
+
+	history := l.history(ctx, agentCtx)
 	if len(history) > 0 {
 		merged := append([]*schema.Message{}, history...)
 		merged = append(merged, messages...)
 		messages = merged
 	}
-	recordedThrough := len(history)
+	newMessagesStart := len(history)
 
 	for {
 		req := schema.CompletionRequest{System: system, Messages: messages}
@@ -88,16 +76,16 @@ func (l *Loop) Run(ctx context.Context, system string, messages []*schema.Messag
 		if reply == nil {
 			return nil, fmt.Errorf("llm: nil reply")
 		}
-		exchange := append([]*schema.Message{}, messages[recordedThrough:]...)
+		exchange := append([]*schema.Message{}, messages[newMessagesStart:]...)
 		exchange = append(exchange, reply)
-		l.record(ctx, exchange)
+		l.record(ctx, agentCtx, exchange)
 
 		switch reply.FinishReason {
 		case schema.FinishReasonStop:
 			return reply, nil
 		case schema.FinishReasonToolCalls:
 			messages = append(messages, reply)
-			recordedThrough = len(messages)
+			newMessagesStart = len(messages)
 			for _, call := range reply.ToolCalls {
 				l.log.DebugContext(ctx, "tool call", "tool", call.Name, "args", string(call.Arguments))
 				if l.tools == nil {
@@ -118,18 +106,8 @@ func (l *Loop) Run(ctx context.Context, system string, messages []*schema.Messag
 	}
 }
 
-func (l *Loop) history(ctx context.Context) []*schema.Message {
-	if l.sessions == nil {
-		return nil
-	}
-
-	sess, ok := session.From(ctx)
-	if !ok {
-		l.log.WarnContext(ctx, "session history unavailable", "err", errNoSession)
-		return nil
-	}
-
-	messages, err := l.sessions.Messages(ctx, sess.SourceURI)
+func (l *Loop) history(ctx context.Context, agentCtx Context) []*schema.Message {
+	messages, err := agentCtx.Messages(ctx)
 	if err != nil {
 		l.log.WarnContext(ctx, "session history unavailable", "err", err)
 		return nil
@@ -137,18 +115,12 @@ func (l *Loop) history(ctx context.Context) []*schema.Message {
 	return messages
 }
 
-func (l *Loop) record(ctx context.Context, messages []*schema.Message) {
-	if l.sessions == nil || len(messages) == 0 {
+func (l *Loop) record(ctx context.Context, agentCtx Context, messages []*schema.Message) {
+	if len(messages) == 0 {
 		return
 	}
 
-	sess, ok := session.From(ctx)
-	if !ok {
-		l.log.WarnContext(ctx, "session record unavailable", "err", errNoSession)
-		return
-	}
-
-	if err := l.sessions.Record(ctx, sess.SourceURI, messages); err != nil {
+	if err := agentCtx.Record(ctx, messages); err != nil {
 		l.log.WarnContext(ctx, "session record unavailable", "err", err)
 	}
 }

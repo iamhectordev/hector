@@ -48,7 +48,10 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, loop, agent.WithBaseSystem(agent.SystemPrompt)),
+		agent.NewModule(bus, loop,
+			agent.WithBaseSystem(agent.SystemPrompt),
+			agent.WithSessionStore(noopSessionStore{}),
+		),
 		slackMod,
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
@@ -83,7 +86,7 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	require.NotEmpty(t, completer.Requests)
 	req := completer.Requests[0]
 	require.Contains(t, req.System, `<conversation platform="slack" channel_type="dm" channel_id="D123" thread_ts="1610241741.000200"></conversation>`)
-	
+
 	require.Len(t, req.Messages, 1)
 	require.Equal(t, `<msg sender_id="U222" sender_name="Test User">hi</msg>`, req.Messages[0].Content)
 }

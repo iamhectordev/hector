@@ -10,6 +10,7 @@ import (
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
+	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -17,6 +18,7 @@ import (
 type Module struct {
 	bus        *waffle.EventBus
 	runner     Runner
+	sessions   session.Store
 	baseSystem string
 	out        io.Writer
 	logger     *slog.Logger
@@ -28,6 +30,11 @@ type Option func(*Module)
 // WithBaseSystem sets the base system prompt text.
 func WithBaseSystem(prompt string) Option {
 	return func(m *Module) { m.baseSystem = prompt }
+}
+
+// WithSessionStore sets the store used to build per-turn agent contexts.
+func WithSessionStore(store session.Store) Option {
+	return func(m *Module) { m.sessions = store }
 }
 
 // WithWriter sets where replies are printed. Defaults to stdout.
@@ -75,8 +82,12 @@ func (m *Module) Start(ctx context.Context) error {
 
 func (m *Module) Stop(context.Context) error { return nil }
 
-func (m *Module) handle(ctx context.Context, system string, text string) error {
-	reply, err := m.runner.Run(ctx, system, []*schema.Message{schema.UserMessage(text)})
+func (m *Module) newAgentContext(sourceURI string) (Context, error) {
+	return NewSessionContext(m.sessions, sourceURI)
+}
+
+func (m *Module) handle(ctx context.Context, agentCtx Context, system string, text string) error {
+	reply, err := m.runner.Run(ctx, agentCtx, system, []*schema.Message{schema.UserMessage(text)})
 	if err != nil {
 		return err
 	}

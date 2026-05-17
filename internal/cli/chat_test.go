@@ -12,6 +12,8 @@ import (
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
+	"github.com/iamhectordev/hector/pkg/llm/schema"
+	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/stretchr/testify/require"
@@ -26,7 +28,10 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}), agent.WithWriter(buf)),
+		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}),
+			agent.WithSessionStore(noopSessionStore{}),
+			agent.WithWriter(buf),
+		),
 		tui.NewModule(bus, tui.WithReader(strings.NewReader("hello\n"))),
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
@@ -55,7 +60,10 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}), agent.WithWriter(buf)),
+		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}),
+			agent.WithSessionStore(noopSessionStore{}),
+			agent.WithWriter(buf),
+		),
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
@@ -120,4 +128,18 @@ func waitForWrite(ctx context.Context, buf *safeBuffer, timeout time.Duration) e
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+type noopSessionStore struct{}
+
+func (noopSessionStore) GetOrCreate(_ context.Context, sourceURI string) (session.StoredSession, error) {
+	return session.StoredSession{SourceURI: sourceURI}, nil
+}
+
+func (noopSessionStore) Messages(context.Context, string) ([]*schema.Message, error) {
+	return nil, nil
+}
+
+func (noopSessionStore) Record(context.Context, string, []*schema.Message) error {
+	return nil
 }
