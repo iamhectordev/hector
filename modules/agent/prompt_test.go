@@ -56,3 +56,48 @@ func TestPrompt_WithXMLPart(t *testing.T) {
 <conversation platform="slack"></conversation>`
 	require.Equal(t, want, got)
 }
+
+func TestXMLPart_RenderMessageFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		file agent.MessageFile
+		want string
+	}{
+		{
+			name: "text content stays readable",
+			file: agent.MessageFile{
+				ID:      "F456",
+				Name:    "config.md",
+				Type:    "text/markdown",
+				Content: "# Config\n\nport: 8080\n",
+			},
+			want: `<file id="F456" name="config.md" type="text/markdown"># Config
+
+port: 8080
+</file>`,
+		},
+		{
+			name: "unsupported file has status and reason",
+			file: agent.MessageFile{
+				ID:     "F789",
+				Name:   "photo.png",
+				Type:   "image/png",
+				Status: "unsupported",
+				Reason: "non-textual file",
+			},
+			want: `<file id="F789" name="photo.png" type="image/png" status="unsupported" reason="non-textual file"></file>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := agent.NewXMLPart("file", tt.file).Render()
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}

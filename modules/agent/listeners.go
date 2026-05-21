@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/xml"
 
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
@@ -26,6 +27,7 @@ type UserMessage struct {
 	SenderName string            `xml:"sender_name,attr,omitempty"`
 	Text       string            `xml:"text"`
 	Reactions  *MessageReactions `xml:"reactions,omitempty"`
+	Files      []MessageFile     `xml:"file,omitempty"`
 }
 
 type MessageReactions struct {
@@ -38,6 +40,40 @@ type MessageReaction struct {
 	Emoji string `xml:"emoji,attr"`
 	Count int    `xml:"count,attr"`
 	You   *bool  `xml:"you,attr,omitempty"`
+}
+
+type MessageFile struct {
+	ID      string `xml:"id,attr"`
+	Name    string `xml:"name,attr,omitempty"`
+	Type    string `xml:"type,attr,omitempty"`
+	Status  string `xml:"status,attr,omitempty"`
+	Reason  string `xml:"reason,attr,omitempty"`
+	Content string `xml:"-"`
+}
+
+func (f MessageFile) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "id"}, Value: f.ID})
+	if f.Name != "" {
+		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "name"}, Value: f.Name})
+	}
+	if f.Type != "" {
+		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "type"}, Value: f.Type})
+	}
+	if f.Status != "" {
+		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "status"}, Value: f.Status})
+	}
+	if f.Reason != "" {
+		start.Attr = append(start.Attr, xml.Attr{Name: xml.Name{Local: "reason"}, Value: f.Reason})
+	}
+	if err := e.EncodeToken(start); err != nil {
+		return err
+	}
+	if f.Content != "" {
+		if err := e.EncodeToken(xml.CharData(f.Content)); err != nil {
+			return err
+		}
+	}
+	return e.EncodeToken(start.End())
 }
 
 func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageReceivedData]) error {
@@ -102,6 +138,7 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		SenderName: data.Sender.Name,
 		Text:       data.Text,
 		Reactions:  slackReactionsXML(data.Reactions),
+		Files:      slackFilesXML(data.Files),
 	}
 	content, err := NewPrompt(
 		NewXMLPart("msg", msgCtx),
@@ -121,6 +158,25 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		return err
 	}
 	return nil
+}
+
+func slackFilesXML(files []slack.FileAttachment) []MessageFile {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make([]MessageFile, 0, len(files))
+	for _, file := range files {
+		msgFile := MessageFile{
+			ID:      file.ID,
+			Name:    file.Name,
+			Type:    file.ContentType,
+			Content: file.Content,
+			Status:  string(file.Status),
+			Reason:  file.Reason,
+		}
+		out = append(out, msgFile)
+	}
+	return out
 }
 
 func slackReactionsXML(reactions slack.Reactions) *MessageReactions {

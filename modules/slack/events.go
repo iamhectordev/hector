@@ -51,6 +51,23 @@ type UnavailableReactions struct {
 	Reason string
 }
 
+// FileAttachment is a best-effort textual file attachment enrichment.
+type FileAttachment struct {
+	ID          string
+	Name        string
+	ContentType string
+	Content     string
+	Status      FileAttachmentStatus
+	Reason      string
+}
+
+type FileAttachmentStatus string
+
+const (
+	FileAttachmentStatusUnavailable FileAttachmentStatus = "unavailable"
+	FileAttachmentStatusUnsupported FileAttachmentStatus = "unsupported"
+)
+
 // MessageReceivedData is the payload for [MessageReceived].
 type MessageReceivedData struct {
 	Channel    Channel
@@ -58,6 +75,7 @@ type MessageReceivedData struct {
 	Sender     Sender
 	Text       string
 	Reactions  Reactions
+	Files      []FileAttachment
 	SentAt     time.Time
 	ReceivedAt time.Time
 }

@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/iamhectordev/hector/pkg/slackmock"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
+	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
 )
@@ -181,8 +184,221 @@ func TestSlack_DMMessage_ReactionFailureStillReachesAgent(t *testing.T) {
 </msg>`, req.Messages[0].Content)
 }
 
+func TestSlack_DMMessage_TextFileAttachment_ReachesAgentInline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer xoxb-fake", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "text/markdown")
+		_, err := w.Write([]byte("# Config\n\nport: 8080\n"))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(fileServer.Close)
+
+	srv, completer := newSlackAgentCapture(t, ctx)
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Test User"},
+		},
+	})
+	srv.ExpectWithResponse("reactions.get", map[string]any{
+		"ok":      true,
+		"type":    "message",
+		"channel": "D123",
+		"message": map[string]any{"type": "message", "ts": "1610241741.000200"},
+	})
+	filesInfo := srv.ExpectWithResponse("files.info", map[string]any{
+		"ok": true,
+		"file": map[string]any{
+			"id":                   "F456",
+			"name":                 "config.md",
+			"mimetype":             "text/markdown",
+			"url_private_download": fileServer.URL + "/config.md",
+		},
+	})
+
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D123",
+		User:        "U222",
+		Text:        "please inspect",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+		Message: &slackgo.Msg{
+			Files: []slackgo.File{{
+				ID:       "F456",
+				Name:     "config.md",
+				Mimetype: "text/markdown",
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	filesInfoCall := filesInfo.Require(t, ctx)
+	require.Equal(t, "F456", filesInfoCall.Get("file"))
+
+	var req schema.CompletionRequest
+	select {
+	case req = <-completer.requests:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for agent request")
+	}
+	require.Len(t, req.Messages, 1)
+	require.Equal(t, `<msg sender_id="U222" sender_name="Test User">
+  <text>please inspect</text>
+  <file id="F456" name="config.md" type="text/markdown"># Config
+
+port: 8080
+</file>
+</msg>`, req.Messages[0].Content)
+}
+
+func TestSlack_DMMessage_TextFileDownloadFailureStillReachesAgent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	t.Cleanup(fileServer.Close)
+
+	srv, completer := newSlackAgentCapture(t, ctx)
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Test User"},
+		},
+	})
+	srv.ExpectWithResponse("reactions.get", map[string]any{
+		"ok":      true,
+		"type":    "message",
+		"channel": "D123",
+		"message": map[string]any{"type": "message", "ts": "1610241741.000200"},
+	})
+	srv.ExpectWithResponse("files.info", map[string]any{
+		"ok": true,
+		"file": map[string]any{
+			"id":                   "F456",
+			"name":                 "config.md",
+			"mimetype":             "text/markdown",
+			"url_private_download": fileServer.URL + "/config.md",
+		},
+	})
+
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D123",
+		User:        "U222",
+		Text:        "please inspect",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+		Message: &slackgo.Msg{
+			Files: []slackgo.File{{
+				ID:       "F456",
+				Name:     "config.md",
+				Mimetype: "text/markdown",
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	var req schema.CompletionRequest
+	select {
+	case req = <-completer.requests:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for agent request")
+	}
+	require.Len(t, req.Messages, 1)
+	require.Contains(t, req.Messages[0].Content, `<text>please inspect</text>`)
+	require.Contains(t, req.Messages[0].Content, `<file id="F456" name="config.md" type="text/markdown" status="unavailable" reason=`)
+}
+
+func TestSlack_DMMessage_BinaryFileAttachment_IsMarkedUnsupported(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	srv, completer := newSlackAgentCapture(t, ctx)
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Test User"},
+		},
+	})
+	srv.ExpectWithResponse("reactions.get", map[string]any{
+		"ok":      true,
+		"type":    "message",
+		"channel": "D123",
+		"message": map[string]any{"type": "message", "ts": "1610241741.000200"},
+	})
+
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D123",
+		User:        "U222",
+		Text:        "please inspect",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+		Message: &slackgo.Msg{
+			Files: []slackgo.File{{
+				ID:       "F789",
+				Name:     "photo.png",
+				Mimetype: "image/png",
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	var req schema.CompletionRequest
+	select {
+	case req = <-completer.requests:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for agent request")
+	}
+	require.Len(t, req.Messages, 1)
+	require.Equal(t, `<msg sender_id="U222" sender_name="Test User">
+  <text>please inspect</text>
+  <file id="F789" name="photo.png" type="image/png" status="unsupported" reason="non-textual file"></file>
+</msg>`, req.Messages[0].Content)
+}
+
 type captureCompleter struct {
 	requests chan schema.CompletionRequest
+}
+
+func newSlackAgentCapture(t *testing.T, ctx context.Context) (*slackmock.Server, *captureCompleter) {
+	t.Helper()
+
+	srv := slackmock.New(t)
+
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+
+	slackMod, err := slackmodule.NewModule(bus, slackmodule.Config{
+		AppToken: "xapp-fake",
+		BotToken: "xoxb-fake",
+		APIURL:   srv.BaseURL() + "/api/",
+	})
+	require.NoError(t, err)
+
+	completer := newCaptureCompleter()
+	loop := agent.NewLoop(completer)
+
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, loop,
+			agent.WithBaseSystem(agent.SystemPrompt),
+			agent.WithSessionStore(noopSessionStore{}),
+		),
+		slackMod,
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
+	require.NoError(t, err)
+
+	go sv.Run(ctx)
+	return srv, completer
 }
 
 func newCaptureCompleter() *captureCompleter {
