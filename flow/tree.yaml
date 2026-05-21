@@ -361,14 +361,32 @@
         - Hector forwards a message to another channel or thread
       open_questions: []
       children: []
-    - slug: integrations.github
-      title: GitHub
-      description: GitHub integration — PRs, comments, issues, reviews
+    - slug: integrations.github_projects
+      title: GitHub Project Management
+      description: GitHub issue and milestone management — create, update, label, block
       status: idea
       priority: P1
       stories:
-        - Hector reads and writes PR comments, reviews, and issue comments
-        - Hector can open PRs, create issues, and track their state
+        - Hector creates and updates milestones
+        - Hector creates, reads, and updates issues
+        - Hector writes issue comments
+        - Hector lists and filters issues by milestone, status, and label
+        - Hector assigns milestones and labels to issues
+        - Hector creates and manages labels
+        - Hector closes issues
+        - Hector marks issues as blocked by other issues and reads blocking relationships
+      open_questions: []
+      children: []
+    - slug: integrations.github_code
+      title: GitHub Code Collaboration
+      description: GitHub code collaboration — PRs, reviews, PR comments
+      status: idea
+      priority: P1
+      stories:
+        - Hector reads and writes PR comments
+        - Hector submits PR reviews
+        - Hector opens and reads pull requests
+        - Hector tracks PR state — open, merged, closed, draft
       open_questions: []
       children: []
     - slug: integrations.jira
