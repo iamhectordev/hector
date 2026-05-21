@@ -333,15 +333,32 @@
   priority: P1
   open_questions: []
   children:
-    - slug: integrations.slack
-      title: Slack
-      description: Full-fidelity Slack integration — messages, reactions, threads, voice, images
+    - slug: integrations.slack_read
+      title: Slack Read
+      description: Full-fidelity Slack message ingestion — text, reactions, media, threads
       status: idea
       priority: P1
       stories:
-        - Hector reads Slack messages with full fidelity — reactions, reply counts, edits, attachments
-        - Hector transcribes voice messages and passes images to the model
-        - Hector can post messages, reply in threads, and react
+        - Hector reads the full text of a Slack message including formatting, mentions, and emoji
+        - Hector sees all reactions on a message — who reacted and with what emoji
+        - Hector knows when a message has been edited and can see the current version
+        - Hector reads images attached to a message, passing them to the model
+        - Hector reads files attached to a message
+        - Hector reads the thread context — the parent message and all replies in order
+        - Hector reads link previews and unfurled content inline with the message
+      open_questions: []
+      children: []
+    - slug: integrations.slack_write
+      title: Slack Write
+      description: Human-like Slack output — post, reply, react, share, forward
+      status: idea
+      priority: P1
+      stories:
+        - Hector posts a message to a channel
+        - Hector replies in a thread
+        - Hector reacts to a message with an emoji
+        - Hector shares an image in a message
+        - Hector forwards a message to another channel or thread
       open_questions: []
       children: []
     - slug: integrations.github
