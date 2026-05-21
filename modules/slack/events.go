@@ -33,12 +33,31 @@ type Sender struct {
 	Name string
 }
 
+// Reaction is an emoji reaction attached to a Slack message.
+type Reaction struct {
+	Emoji string
+	Count int
+	You   bool
+}
+
+// Reactions is the best-effort reaction enrichment for a Slack message.
+type Reactions struct {
+	Items       []Reaction
+	Unavailable *UnavailableReactions
+}
+
+// UnavailableReactions records why Slack reactions could not be enriched.
+type UnavailableReactions struct {
+	Reason string
+}
+
 // MessageReceivedData is the payload for [MessageReceived].
 type MessageReceivedData struct {
 	Channel    Channel
 	ThreadTS   string // Empty when not in a thread
 	Sender     Sender
 	Text       string
+	Reactions  Reactions
 	SentAt     time.Time
 	ReceivedAt time.Time
 }

@@ -70,8 +70,8 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	srv.ExpectWithResponse("conversations.info", map[string]any{
 		"ok": true,
 		"channel": map[string]any{
-			"id": "D123",
-			"name": "integration-channel",
+			"id":          "D123",
+			"name":        "integration-channel",
 			"num_members": 2,
 		},
 	})
@@ -93,7 +93,9 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	// 7. Verify reply expectation was hit by the agent calling the tool
 	call := postMessage.Require(t, ctx)
 	require.Equal(t, "D123", call.Get("channel"))
-	require.Equal(t, `<msg sender_id="U222" sender_name="Integration User">hello from integration test</msg>`, call.Get("text"))
+	require.Equal(t, `<msg sender_id="U222" sender_name="Integration User">
+  <text>hello from integration test</text>
+</msg>`, call.Get("text"))
 	require.Equal(t, "1610241741.000200", call.Get("thread_ts"))
 
 	// 8. Graceful shutdown

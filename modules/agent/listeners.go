@@ -22,9 +22,22 @@ type TUIContext struct {
 }
 
 type UserMessage struct {
-	SenderID   string `xml:"sender_id,attr,omitempty"`
-	SenderName string `xml:"sender_name,attr,omitempty"`
-	Text       string `xml:",chardata"`
+	SenderID   string            `xml:"sender_id,attr,omitempty"`
+	SenderName string            `xml:"sender_name,attr,omitempty"`
+	Text       string            `xml:"text"`
+	Reactions  *MessageReactions `xml:"reactions,omitempty"`
+}
+
+type MessageReactions struct {
+	Status string            `xml:"status,attr,omitempty"`
+	Reason string            `xml:"reason,attr,omitempty"`
+	Items  []MessageReaction `xml:"r,omitempty"`
+}
+
+type MessageReaction struct {
+	Emoji string `xml:"emoji,attr"`
+	Count int    `xml:"count,attr"`
+	You   *bool  `xml:"you,attr,omitempty"`
 }
 
 func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageReceivedData]) error {
@@ -88,6 +101,7 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		SenderID:   data.Sender.ID,
 		SenderName: data.Sender.Name,
 		Text:       data.Text,
+		Reactions:  slackReactionsXML(data.Reactions),
 	}
 	content, err := NewPrompt(
 		NewXMLPart("msg", msgCtx),
@@ -107,4 +121,30 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		return err
 	}
 	return nil
+}
+
+func slackReactionsXML(reactions slack.Reactions) *MessageReactions {
+	if reactions.Unavailable != nil {
+		return &MessageReactions{
+			Status: "unavailable",
+			Reason: reactions.Unavailable.Reason,
+		}
+	}
+	if len(reactions.Items) == 0 {
+		return nil
+	}
+	items := make([]MessageReaction, 0, len(reactions.Items))
+	for _, reaction := range reactions.Items {
+		var you *bool
+		if reaction.You {
+			value := true
+			you = &value
+		}
+		items = append(items, MessageReaction{
+			Emoji: reaction.Emoji,
+			Count: reaction.Count,
+			You:   you,
+		})
+	}
+	return &MessageReactions{Items: items}
 }
