@@ -45,6 +45,17 @@ func (c *SessionContext) Messages(ctx context.Context) ([]*schema.Message, error
 	return repaired, nil
 }
 
+func (c *SessionContext) Session(ctx context.Context) (session.Session, error) {
+	stored, err := c.store.GetOrCreate(ctx, c.sourceURI)
+	if err != nil {
+		return session.Session{}, err
+	}
+	return session.Session{
+		ID:        stored.ID,
+		SourceURI: stored.SourceURI,
+	}, nil
+}
+
 const interruptedToolResult = "interrupted: the process restarted before this tool call completed — please retry if needed"
 
 func repairHistory(messages []*schema.Message) (repaired []*schema.Message, injected []*schema.Message) {

@@ -42,7 +42,11 @@ func New(cfg Config, opts ...Option) (Completer, error) {
 		if err := validate.Struct(cfg.OpenAI); err != nil {
 			return nil, fmt.Errorf("llm: openai config: %w", err)
 		}
-		return openaiprovider.New(cfg.OpenAI.APIKey, cfg.OpenAI.Model), nil
+		return openaiprovider.New(
+			cfg.OpenAI.APIKey,
+			cfg.OpenAI.Model,
+			openaiprovider.WithBodyLog(openaiprovider.BodyLogConfig(cfg.BodyLog)),
+		), nil
 	default:
 		return nil, fmt.Errorf("llm: invalid provider %q", o.provider)
 	}

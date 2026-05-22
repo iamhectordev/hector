@@ -1,6 +1,9 @@
 package llm
 
-import "github.com/go-playground/validator/v10"
+import (
+	"github.com/go-playground/validator/v10"
+	openaiprovider "github.com/iamhectordev/hector/pkg/llm/providers/openai"
+)
 
 var validate = validator.New(validator.WithRequiredStructEnabled())
 
@@ -12,12 +15,13 @@ const (
 	ProviderOpenAI Provider = "openai"
 )
 
-type OpenAIConfig struct {
-	APIKey string `yaml:"api_key" env:"OPENAI_API_KEY" validate:"required"`
-	Model  string `yaml:"model" env:"OPENAI_MODEL" default:"gpt-4o-mini"`
+type BodyLogConfig struct {
+	Enabled bool   `yaml:"enabled" env:"LLM_BODY_LOG_ENABLED" default:"false"`
+	Dir     string `yaml:"dir" env:"LLM_BODY_LOG_DIR" default:"sessions/llm"`
 }
 
 type Config struct {
-	DefaultProvider Provider     `yaml:"default_provider" env:"LLM_DEFAULT_PROVIDER" default:"echo" validate:"oneof=echo openai"`
-	OpenAI          OpenAIConfig `yaml:"openai"`
+	DefaultProvider Provider              `yaml:"default_provider" env:"LLM_DEFAULT_PROVIDER" default:"echo" validate:"oneof=echo openai"`
+	BodyLog         BodyLogConfig         `yaml:"body_log"`
+	OpenAI          openaiprovider.Config `yaml:"openai"`
 }

@@ -27,6 +27,21 @@ func TestSessionContextDelegatesToStore(t *testing.T) {
 	require.Equal(t, []schema.Message{{Role: schema.RoleUser, Content: "current"}}, store.recorded)
 }
 
+func TestSessionContextReturnsStoredSessionMetadata(t *testing.T) {
+	store := &sessionStoreFake{
+		stored: session.StoredSession{
+			ID:        "sess_123",
+			SourceURI: "slack://C123/1",
+		},
+	}
+	agentCtx, err := agent.NewSessionContext(store, "slack://C123/1")
+	require.NoError(t, err)
+
+	got, err := agentCtx.Session(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, session.Session{ID: "sess_123", SourceURI: "slack://C123/1"}, got)
+}
+
 func TestNewSessionContextRejectsMissingInputs(t *testing.T) {
 	_, err := agent.NewSessionContext(nil, "slack://C123/1")
 	require.Error(t, err)
@@ -129,9 +144,13 @@ type sessionStoreFake struct {
 	history   []*schema.Message
 	sourceURI string
 	recorded  []schema.Message
+	stored    session.StoredSession
 }
 
 func (s *sessionStoreFake) GetOrCreate(_ context.Context, sourceURI string) (session.StoredSession, error) {
+	if s.stored.ID != "" || s.stored.SourceURI != "" {
+		return s.stored, nil
+	}
 	return session.StoredSession{SourceURI: sourceURI}, nil
 }
 

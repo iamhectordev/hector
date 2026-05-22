@@ -10,6 +10,7 @@ import (
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
+	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/stretchr/testify/require"
 )
 
@@ -170,6 +171,28 @@ func TestLoop_Run_LoadsSessionHistory(t *testing.T) {
 	}, agentCtx.messages)
 }
 
+func TestLoop_Run_AddsAgentSessionToCompleterContext(t *testing.T) {
+	agentCtx := &recordingAgentContext{
+		session: session.Session{
+			ID:        "sess_123",
+			SourceURI: "slack://D123/1",
+		},
+	}
+	completer := &sessionCaptureCompleter{
+		reply: &schema.Message{
+			Role:         schema.RoleAssistant,
+			Content:      "assistant",
+			FinishReason: schema.FinishReasonStop,
+		},
+	}
+	loop := agent.NewLoop(completer)
+
+	_, err := loop.Run(t.Context(), agentCtx, "", []*schema.Message{schema.UserMessage("hello")})
+	require.NoError(t, err)
+
+	require.Equal(t, agentCtx.session, completer.session)
+}
+
 func TestLoop_Run_ContinuesWithoutHistoryWhenSessionStoreFails(t *testing.T) {
 	agentCtx := &recordingAgentContext{messagesErr: errors.New("db unavailable")}
 	completer := &requestCompleter{
@@ -250,6 +273,11 @@ type recordingAgentContext struct {
 	messagesErr error
 	history     []*schema.Message
 	messages    []schema.Message
+	session     session.Session
+}
+
+func (c *recordingAgentContext) Session(context.Context) (session.Session, error) {
+	return c.session, nil
 }
 
 func (c *recordingAgentContext) Messages(context.Context) ([]*schema.Message, error) {
@@ -276,5 +304,15 @@ type requestCompleter struct {
 
 func (c *requestCompleter) Complete(_ context.Context, req schema.CompletionRequest) (*schema.Message, error) {
 	c.requests = append(c.requests, req)
+	return c.reply, nil
+}
+
+type sessionCaptureCompleter struct {
+	reply   *schema.Message
+	session session.Session
+}
+
+func (c *sessionCaptureCompleter) Complete(ctx context.Context, _ schema.CompletionRequest) (*schema.Message, error) {
+	c.session, _ = session.From(ctx)
 	return c.reply, nil
 }

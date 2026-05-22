@@ -8,6 +8,7 @@ import (
 
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
+	"github.com/iamhectordev/hector/pkg/session"
 )
 
 // Runner executes one agent turn and returns the assistant reply.
@@ -19,6 +20,10 @@ type Runner interface {
 type ToolRuntime interface {
 	Definitions() []schema.ToolDefinition
 	Run(ctx context.Context, name string, args json.RawMessage) (string, error)
+}
+
+type sessionProvider interface {
+	Session(ctx context.Context) (session.Session, error)
 }
 
 // Loop runs the agent turn: calls the model, executes any tool calls, and repeats
@@ -54,6 +59,7 @@ func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, message
 	if agentCtx == nil {
 		return nil, fmt.Errorf("agent: context is required")
 	}
+	ctx = l.withSession(ctx, agentCtx)
 
 	history := l.history(ctx, agentCtx)
 	if len(history) > 0 {
@@ -104,6 +110,22 @@ func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, message
 			return nil, fmt.Errorf("llm: unexpected finish reason %q", reply.FinishReason)
 		}
 	}
+}
+
+func (l *Loop) withSession(ctx context.Context, agentCtx Context) context.Context {
+	provider, ok := agentCtx.(sessionProvider)
+	if !ok {
+		return ctx
+	}
+	s, err := provider.Session(ctx)
+	if err != nil {
+		l.log.WarnContext(ctx, "session metadata unavailable", "err", err)
+		return ctx
+	}
+	if s.ID == "" && s.SourceURI == "" {
+		return ctx
+	}
+	return session.With(ctx, s)
 }
 
 func (l *Loop) history(ctx context.Context, agentCtx Context) []*schema.Message {

@@ -33,7 +33,7 @@ func TestNew_OpenAIReturnsProvider(t *testing.T) {
 
 	completer, err := llm.New(llm.Config{
 		DefaultProvider: llm.ProviderOpenAI,
-		OpenAI: llm.OpenAIConfig{
+		OpenAI: openaiprovider.Config{
 			APIKey: "sk-test",
 		},
 	})

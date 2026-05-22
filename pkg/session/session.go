@@ -4,6 +4,7 @@ import "context"
 
 // Session carries per-request attributes through the call chain.
 type Session struct {
+	ID        string
 	SourceURI string
 }
 

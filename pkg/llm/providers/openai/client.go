@@ -17,20 +17,32 @@ const defaultModel = "gpt-4o-mini"
 
 // Completer sends chat history to OpenAI Chat Completions.
 type Completer struct {
-	inner sdkopenai.Client
-	model string
+	inner   sdkopenai.Client
+	model   string
+	bodyLog BodyLogConfig
 }
 
-func New(apiKey, model string) *Completer {
+type Option func(*Completer)
+
+func New(apiKey, model string, opts ...Option) *Completer {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		model = defaultModel
 	}
 
-	return &Completer{
-		inner: sdkopenai.NewClient(option.WithAPIKey(strings.TrimSpace(apiKey))),
+	c := &Completer{
 		model: model,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	options := []option.RequestOption{option.WithAPIKey(strings.TrimSpace(apiKey))}
+	if c.bodyLog.Enabled {
+		options = append(options, option.WithMiddleware(c.bodyLogMiddleware()))
+	}
+	c.inner = sdkopenai.NewClient(options...)
+	return c
 }
 
 func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) (*schema.Message, error) {
