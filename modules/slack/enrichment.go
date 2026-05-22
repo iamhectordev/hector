@@ -1,11 +1,9 @@
 package slack
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"log/slog"
-	"strings"
 
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
@@ -75,105 +73,8 @@ func (e messageEnricher) enrichReactions(ctx context.Context, data *MessageRecei
 	data.Reactions = reactionsFromSlack(item, e.botUserID)
 }
 
-func (e messageEnricher) enrichFiles(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
-	if event.Message == nil || len(event.Message.Files) == 0 {
-		return
-	}
-
-	files := make([]FileAttachment, 0, len(event.Message.Files))
-	for _, file := range event.Message.Files {
-		if !isTextualSlackFile(file.Mimetype) {
-			files = append(files, unsupportedFileAttachment(file))
-			continue
-		}
-		attachment := e.enrichFile(ctx, file)
-		if attachment.ID != "" {
-			files = append(files, attachment)
-		}
-	}
-	data.Files = files
-}
-
-func (e messageEnricher) enrichFile(ctx context.Context, file slackgo.File) FileAttachment {
-	attachment := FileAttachment{
-		ID:          file.ID,
-		Name:        file.Name,
-		ContentType: file.Mimetype,
-	}
-
-	info, _, _, err := e.api.GetFileInfoContext(ctx, file.ID, 0, 0)
-	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get file info", "err", err, "file", file.ID)
-		attachment.Status = FileAttachmentStatusUnavailable
-		attachment.Reason = err.Error()
-		return attachment
-	}
-	if info.Name != "" {
-		attachment.Name = info.Name
-	}
-	if info.Mimetype != "" {
-		attachment.ContentType = info.Mimetype
-	}
-	if !isTextualSlackFile(attachment.ContentType) {
-		attachment.Status = FileAttachmentStatusUnsupported
-		attachment.Reason = "non-textual file"
-		return attachment
-	}
-	if info.URLPrivateDownload == "" {
-		attachment.Status = FileAttachmentStatusUnavailable
-		attachment.Reason = "missing download URL"
-		return attachment
-	}
-
-	var buf bytes.Buffer
-	if err := e.api.GetFileContext(ctx, info.URLPrivateDownload, &buf); err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to download file", "err", err, "file", file.ID)
-		attachment.Status = FileAttachmentStatusUnavailable
-		attachment.Reason = err.Error()
-		return attachment
-	}
-	attachment.Content = buf.String()
-	return attachment
-}
-
-func unsupportedFileAttachment(file slackgo.File) FileAttachment {
-	return FileAttachment{
-		ID:          file.ID,
-		Name:        file.Name,
-		ContentType: file.Mimetype,
-		Status:      FileAttachmentStatusUnsupported,
-		Reason:      "non-textual file",
-	}
-}
-
 func (e messageEnricher) log(context.Context) *slog.Logger {
 	return slog.Default().With("component", "module", "module", "slack")
-}
-
-func isTextualSlackFile(mimeType string) bool {
-	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
-	if mimeType == "" {
-		return false
-	}
-	if strings.HasPrefix(mimeType, "text/") {
-		return true
-	}
-	switch mimeType {
-	case "application/json",
-		"application/javascript",
-		"application/typescript",
-		"application/xml",
-		"application/x-httpd-php",
-		"application/x-javascript",
-		"application/x-python-code",
-		"application/x-ruby",
-		"application/x-sh",
-		"application/x-yaml",
-		"application/yaml":
-		return true
-	default:
-		return false
-	}
 }
 
 func reactionsFromSlack(item slackgo.ReactedItem, botUserID string) Reactions {

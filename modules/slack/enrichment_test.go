@@ -48,13 +48,13 @@ func TestMessageEnricher_EnrichFiles(t *testing.T) {
 			api:  &fileAPI{},
 			file: slackgo.File{
 				ID:       "F789",
-				Name:     "photo.png",
-				Mimetype: "image/png",
+				Name:     "document.pdf",
+				Mimetype: "application/pdf",
 			},
 			want: []FileAttachment{{
 				ID:          "F789",
-				Name:        "photo.png",
-				ContentType: "image/png",
+				Name:        "document.pdf",
+				ContentType: "application/pdf",
 				Status:      FileAttachmentStatusUnsupported,
 				Reason:      "non-textual file",
 			}},
@@ -95,7 +95,7 @@ func TestMessageEnricher_EnrichFiles(t *testing.T) {
 			})
 
 			require.Equal(t, tt.want, data.Files)
-			if tt.file.Mimetype == "image/png" {
+			if tt.file.Mimetype == "application/pdf" {
 				require.Zero(t, tt.api.infoCalls)
 				require.Zero(t, tt.api.downloadCalls)
 			}

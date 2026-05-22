@@ -86,8 +86,8 @@ func (m *Module) newAgentContext(sourceURI string) (Context, error) {
 	return NewSessionContext(m.sessions, sourceURI)
 }
 
-func (m *Module) handle(ctx context.Context, agentCtx Context, system string, text string) error {
-	reply, err := m.runner.Run(ctx, agentCtx, system, []*schema.Message{schema.UserMessage(text)})
+func (m *Module) handle(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) error {
+	reply, err := m.runner.Run(ctx, agentCtx, system, messages)
 	if err != nil {
 		return err
 	}

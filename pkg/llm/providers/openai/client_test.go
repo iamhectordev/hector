@@ -78,6 +78,75 @@ func TestCompleter_Complete_MapsMessagesAndReturnsAssistantReply(t *testing.T) {
 	require.Equal(t, "prior reply", got.Messages[1].Content)
 }
 
+func TestCompleter_Complete_MapsUserMessageParts(t *testing.T) {
+	t.Parallel()
+
+	type contentPart struct {
+		Type     string `json:"type"`
+		Text     string `json:"text,omitempty"`
+		ImageURL *struct {
+			URL string `json:"url"`
+		} `json:"image_url,omitempty"`
+	}
+	type requestMessage struct {
+		Role    string        `json:"role"`
+		Content []contentPart `json:"content"`
+	}
+	type requestBody struct {
+		Messages []requestMessage `json:"messages"`
+	}
+
+	var got requestBody
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&got))
+
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"id":      "chatcmpl_123",
+			"object":  "chat.completion",
+			"created": 1,
+			"model":   "gpt-4o-mini",
+			"choices": []map[string]any{{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": "ok",
+				},
+				"finish_reason": "stop",
+			}},
+		}))
+	}))
+	t.Cleanup(srv.Close)
+
+	completer := New("sk-test", "")
+	completer.inner = sdkopenai.NewClient(
+		option.WithAPIKey("sk-test"),
+		option.WithBaseURL(srv.URL),
+	)
+
+	reply, err := completer.Complete(t.Context(), schema.CompletionRequest{
+		Messages: []*schema.Message{
+			schema.UserMessageWithParts("fallback", []schema.MessagePart{
+				schema.TextPart("<msg><img id=\"F123\"></img></msg>"),
+				schema.TextPart(`<image_data id="F123"/>`),
+				schema.NewImagePart("F123", "aW1hZ2U=", "image/png"),
+			}),
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, schema.FinishReasonStop, reply.FinishReason)
+
+	require.Len(t, got.Messages, 1)
+	require.Equal(t, "user", got.Messages[0].Role)
+	require.Equal(t, []contentPart{
+		{Type: "text", Text: `<msg><img id="F123"></img></msg>`},
+		{Type: "text", Text: `<image_data id="F123"/>`},
+		{Type: "image_url", ImageURL: &struct {
+			URL string `json:"url"`
+		}{URL: "data:image/png;base64,aW1hZ2U="}},
+	}, got.Messages[0].Content)
+}
+
 func TestCompleter_Complete_RejectsUnknownRole(t *testing.T) {
 	t.Parallel()
 

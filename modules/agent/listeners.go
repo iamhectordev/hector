@@ -6,6 +6,7 @@ import (
 
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
+	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
@@ -28,6 +29,7 @@ type UserMessage struct {
 	Text       string            `xml:"text"`
 	Reactions  *MessageReactions `xml:"reactions,omitempty"`
 	Files      []MessageFile     `xml:"file,omitempty"`
+	Images     []MessageImage    `xml:"img,omitempty"`
 }
 
 type MessageReactions struct {
@@ -49,6 +51,14 @@ type MessageFile struct {
 	Status  string `xml:"status,attr,omitempty"`
 	Reason  string `xml:"reason,attr,omitempty"`
 	Content string `xml:"-"`
+}
+
+type MessageImage struct {
+	ID     string `xml:"id,attr"`
+	Name   string `xml:"name,attr,omitempty"`
+	Type   string `xml:"type,attr,omitempty"`
+	Status string `xml:"status,attr,omitempty"`
+	Reason string `xml:"reason,attr,omitempty"`
 }
 
 func (f MessageFile) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
@@ -103,7 +113,7 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 		return err
 	}
 
-	if err := m.handle(ctx, agentCtx, system, content); err != nil {
+	if err := m.handle(ctx, agentCtx, system, []*schema.Message{schema.UserMessage(content)}); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process tui message",
 			"event_id", e.ID(), "event_type", e.Type(), "text_len", len(text), "err", err)
 		return err
@@ -139,6 +149,7 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		Text:       data.Text,
 		Reactions:  slackReactionsXML(data.Reactions),
 		Files:      slackFilesXML(data.Files),
+		Images:     slackImagesXML(data.Images),
 	}
 	content, err := NewPrompt(
 		NewXMLPart("msg", msgCtx),
@@ -152,12 +163,37 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		return err
 	}
 
-	if err := m.handle(ctx, agentCtx, system, content); err != nil {
+	if err := m.handle(ctx, agentCtx, system, slackUserMessages(content, data.Images)); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process slack message",
 			"event_id", e.ID(), "event_type", e.Type(), "text_len", len(text), "err", err)
 		return err
 	}
 	return nil
+}
+
+func slackUserMessages(content string, images []slack.ImageAttachment) []*schema.Message {
+	parts := slackImageParts(content, images)
+	if len(parts) == 0 {
+		return []*schema.Message{schema.UserMessage(content)}
+	}
+	return []*schema.Message{schema.UserMessageWithParts(content, parts)}
+}
+
+func slackImageParts(content string, images []slack.ImageAttachment) []schema.MessagePart {
+	var parts []schema.MessagePart
+	for _, image := range images {
+		if image.Base64Data == "" {
+			continue
+		}
+		if len(parts) == 0 {
+			parts = append(parts, schema.TextPart(content))
+		}
+		parts = append(parts,
+			schema.TextPart(`<image_data id="`+image.ID+`"/>`),
+			schema.NewImagePart(image.ID, image.Base64Data, image.ContentType),
+		)
+	}
+	return parts
 }
 
 func slackFilesXML(files []slack.FileAttachment) []MessageFile {
@@ -175,6 +211,23 @@ func slackFilesXML(files []slack.FileAttachment) []MessageFile {
 			Reason:  file.Reason,
 		}
 		out = append(out, msgFile)
+	}
+	return out
+}
+
+func slackImagesXML(images []slack.ImageAttachment) []MessageImage {
+	if len(images) == 0 {
+		return nil
+	}
+	out := make([]MessageImage, 0, len(images))
+	for _, image := range images {
+		out = append(out, MessageImage{
+			ID:     image.ID,
+			Name:   image.Name,
+			Type:   image.ContentType,
+			Status: string(image.Status),
+			Reason: image.Reason,
+		})
 	}
 	return out
 }

@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -256,6 +257,143 @@ port: 8080
 </msg>`, req.Messages[0].Content)
 }
 
+func TestSlack_DMMessage_ImageAttachment_ReachesAgentAsImagePart(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	imageBytes := []byte{0x89, 'P', 'N', 'G'}
+	fileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "Bearer xoxb-fake", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "image/png")
+		_, err := w.Write(imageBytes)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(fileServer.Close)
+
+	srv, completer := newSlackAgentCapture(t, ctx)
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Test User"},
+		},
+	})
+	srv.ExpectWithResponse("reactions.get", map[string]any{
+		"ok":      true,
+		"type":    "message",
+		"channel": "D123",
+		"message": map[string]any{"type": "message", "ts": "1610241741.000200"},
+	})
+	filesInfo := srv.ExpectWithResponse("files.info", map[string]any{
+		"ok": true,
+		"file": map[string]any{
+			"id":                   "F789",
+			"name":                 "screenshot.png",
+			"mimetype":             "image/png",
+			"url_private_download": fileServer.URL + "/screenshot.png",
+		},
+	})
+
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D123",
+		User:        "U222",
+		Text:        "please inspect",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+		Message: &slackgo.Msg{
+			Files: []slackgo.File{{
+				ID:       "F789",
+				Name:     "screenshot.png",
+				Mimetype: "image/png",
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	filesInfoCall := filesInfo.Require(t, ctx)
+	require.Equal(t, "F789", filesInfoCall.Get("file"))
+
+	var req schema.CompletionRequest
+	select {
+	case req = <-completer.requests:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for agent request")
+	}
+	require.Len(t, req.Messages, 1)
+	require.Equal(t, `<msg sender_id="U222" sender_name="Test User">
+  <text>please inspect</text>
+  <img id="F789" name="screenshot.png" type="image/png"></img>
+</msg>`, req.Messages[0].Content)
+	require.Equal(t, []schema.MessagePart{
+		schema.TextPart(req.Messages[0].Content),
+		schema.TextPart(`<image_data id="F789"/>`),
+		schema.NewImagePart("F789", base64.StdEncoding.EncodeToString(imageBytes), "image/png"),
+	}, req.Messages[0].Parts)
+}
+
+func TestSlack_DMMessage_ImageDownloadFailureStillReachesAgent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	fileServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	t.Cleanup(fileServer.Close)
+
+	srv, completer := newSlackAgentCapture(t, ctx)
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Test User"},
+		},
+	})
+	srv.ExpectWithResponse("reactions.get", map[string]any{
+		"ok":      true,
+		"type":    "message",
+		"channel": "D123",
+		"message": map[string]any{"type": "message", "ts": "1610241741.000200"},
+	})
+	srv.ExpectWithResponse("files.info", map[string]any{
+		"ok": true,
+		"file": map[string]any{
+			"id":                   "F789",
+			"name":                 "screenshot.png",
+			"mimetype":             "image/png",
+			"url_private_download": fileServer.URL + "/screenshot.png",
+		},
+	})
+
+	err := srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D123",
+		User:        "U222",
+		Text:        "please inspect",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+		Message: &slackgo.Msg{
+			Files: []slackgo.File{{
+				ID:       "F789",
+				Name:     "screenshot.png",
+				Mimetype: "image/png",
+			}},
+		},
+	})
+	require.NoError(t, err)
+
+	var req schema.CompletionRequest
+	select {
+	case req = <-completer.requests:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for agent request")
+	}
+	require.Len(t, req.Messages, 1)
+	require.Contains(t, req.Messages[0].Content, `<text>please inspect</text>`)
+	require.Contains(t, req.Messages[0].Content, `<img id="F789" name="screenshot.png" type="image/png" status="unavailable" reason=`)
+	require.Empty(t, req.Messages[0].Parts)
+}
+
 func TestSlack_DMMessage_TextFileDownloadFailureStillReachesAgent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
@@ -346,8 +484,8 @@ func TestSlack_DMMessage_BinaryFileAttachment_IsMarkedUnsupported(t *testing.T) 
 		Message: &slackgo.Msg{
 			Files: []slackgo.File{{
 				ID:       "F789",
-				Name:     "photo.png",
-				Mimetype: "image/png",
+				Name:     "document.pdf",
+				Mimetype: "application/pdf",
 			}},
 		},
 	})
@@ -362,7 +500,7 @@ func TestSlack_DMMessage_BinaryFileAttachment_IsMarkedUnsupported(t *testing.T) 
 	require.Len(t, req.Messages, 1)
 	require.Equal(t, `<msg sender_id="U222" sender_name="Test User">
   <text>please inspect</text>
-  <file id="F789" name="photo.png" type="image/png" status="unsupported" reason="non-textual file"></file>
+  <file id="F789" name="document.pdf" type="application/pdf" status="unsupported" reason="non-textual file"></file>
 </msg>`, req.Messages[0].Content)
 }
 

@@ -52,7 +52,7 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 		case schema.RoleSystem:
 			params = append(params, sdkopenai.SystemMessage(msg.Content))
 		case schema.RoleUser:
-			params = append(params, sdkopenai.UserMessage(msg.Content))
+			params = append(params, userMessageParam(msg))
 		case schema.RoleAssistant:
 			params = append(params, assistantMessageParam(msg, toolNames))
 		case schema.RoleTool:
@@ -103,6 +103,36 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 		})
 	}
 	return reply, nil
+}
+
+func userMessageParam(msg *schema.Message) sdkopenai.ChatCompletionMessageParamUnion {
+	if len(msg.Parts) == 0 {
+		return sdkopenai.UserMessage(msg.Content)
+	}
+	return sdkopenai.UserMessage(contentPartParams(msg.Parts))
+}
+
+func contentPartParams(parts []schema.MessagePart) []sdkopenai.ChatCompletionContentPartUnionParam {
+	out := make([]sdkopenai.ChatCompletionContentPartUnionParam, 0, len(parts))
+	for _, part := range parts {
+		switch part.Type {
+		case schema.MessagePartTypeText:
+			out = append(out, sdkopenai.TextContentPart(part.Text))
+		case schema.MessagePartTypeImage:
+			if part.Image == nil {
+				continue
+			}
+			out = append(out, sdkopenai.ImageContentPart(sdkopenai.ChatCompletionContentPartImageImageURLParam{
+				URL:    imageDataURL(part.Image),
+				Detail: part.Image.Detail,
+			}))
+		}
+	}
+	return out
+}
+
+func imageDataURL(image *schema.ImagePart) string {
+	return "data:" + image.MIMEType + ";base64," + image.Base64Data
 }
 
 func assistantMessageParam(msg *schema.Message, names toolNameMaps) sdkopenai.ChatCompletionMessageParamUnion {

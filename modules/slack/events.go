@@ -68,6 +68,22 @@ const (
 	FileAttachmentStatusUnsupported FileAttachmentStatus = "unsupported"
 )
 
+// ImageAttachment is a best-effort image attachment enrichment.
+type ImageAttachment struct {
+	ID          string
+	Name        string
+	ContentType string
+	Base64Data  string
+	Status      ImageAttachmentStatus
+	Reason      string
+}
+
+type ImageAttachmentStatus string
+
+const (
+	ImageAttachmentStatusUnavailable ImageAttachmentStatus = "unavailable"
+)
+
 // MessageReceivedData is the payload for [MessageReceived].
 type MessageReceivedData struct {
 	Channel    Channel
@@ -76,6 +92,7 @@ type MessageReceivedData struct {
 	Text       string
 	Reactions  Reactions
 	Files      []FileAttachment
+	Images     []ImageAttachment
 	SentAt     time.Time
 	ReceivedAt time.Time
 }
