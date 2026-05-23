@@ -14,7 +14,7 @@ func TestRegistryRun(t *testing.T) {
 	registry, err := tools.NewRegistry(echoTool{})
 	require.NoError(t, err)
 
-	output, err := registry.Run(t.Context(), "test.echo", json.RawMessage(`{"value":"hello"}`))
+	output, err := registry.Run(t.Context(), "test_echo", json.RawMessage(`{"value":"hello"}`))
 	require.NoError(t, err)
 	require.Equal(t, `{"value":"hello"}`, output)
 }
@@ -31,17 +31,17 @@ func TestRegistryRunUnknownTool(t *testing.T) {
 
 func TestRegistryDefinitionsAreSorted(t *testing.T) {
 	registry, err := tools.NewRegistry(
-		namedTool{name: "z.last"},
-		namedTool{name: "a.first"},
-		namedTool{name: "m.middle"},
+		namedTool{name: "z_last"},
+		namedTool{name: "a_first"},
+		namedTool{name: "m_middle"},
 	)
 	require.NoError(t, err)
 
 	defs := registry.Definitions()
 	require.Len(t, defs, 3)
-	require.Equal(t, "a.first", defs[0].Name)
-	require.Equal(t, "m.middle", defs[1].Name)
-	require.Equal(t, "z.last", defs[2].Name)
+	require.Equal(t, "a_first", defs[0].Name)
+	require.Equal(t, "m_middle", defs[1].Name)
+	require.Equal(t, "z_last", defs[2].Name)
 }
 
 func TestRegistryRunsTimeNow(t *testing.T) {
@@ -51,9 +51,15 @@ func TestRegistryRunsTimeNow(t *testing.T) {
 	registry, err := tools.NewRegistry(tn)
 	require.NoError(t, err)
 
-	output, err := registry.Run(t.Context(), "time.now", nil)
+	output, err := registry.Run(t.Context(), "time_now", nil)
 	require.NoError(t, err)
 	require.Contains(t, output, "UTC")
+}
+
+func TestRegistryRejectsNonSnakeCaseToolName(t *testing.T) {
+	_, err := tools.NewRegistry(namedTool{name: "bad.name"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "snake_case")
 }
 
 type namedTool struct {

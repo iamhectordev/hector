@@ -168,7 +168,7 @@ func TestStoreRecordPersistsFullMessageJSON(t *testing.T) {
 		FinishReason: schema.FinishReasonToolCalls,
 		ToolCalls: []schema.ToolCall{{
 			ID:        "call_1",
-			Name:      "time.now",
+			Name:      "time_now",
 			Arguments: json.RawMessage(`{"timezone":"UTC"}`),
 		}},
 	}

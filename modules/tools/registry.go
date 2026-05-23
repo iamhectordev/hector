@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 )
+
+var toolNameSnakeCase = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // Registry owns tool registration, lookup, and synchronous execution.
 type Registry struct {
@@ -70,6 +73,9 @@ func (r *Registry) Run(ctx context.Context, name string, args json.RawMessage) (
 func validateDefinition(def Definition) error {
 	if def.Name == "" {
 		return fmt.Errorf("tools: cannot register tool with empty name")
+	}
+	if !toolNameSnakeCase.MatchString(def.Name) {
+		return fmt.Errorf("tools: tool name %q must be snake_case: lowercase letters, digits, underscores only, starting with a letter", def.Name)
 	}
 	if def.Description == "" {
 		return fmt.Errorf("tools: tool %q has empty description", def.Name)

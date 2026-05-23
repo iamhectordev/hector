@@ -20,7 +20,7 @@ func TestEchoCompleter_ReturnsLastUserMessageAsAssistant(t *testing.T) {
 			schema.UserMessage("last"),
 		},
 		Tools: []schema.ToolDefinition{
-			{Name: "time.now"},
+			{Name: "time_now"},
 		},
 	})
 
@@ -42,7 +42,7 @@ func TestEchoCompleter_WithReplyTool_ReturnsToolCall(t *testing.T) {
 		},
 		Tools: []schema.ToolDefinition{
 			{Name: "reply"},
-			{Name: "time.now"},
+			{Name: "time_now"},
 		},
 	})
 

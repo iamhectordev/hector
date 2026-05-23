@@ -26,7 +26,7 @@ func TestModuleEmitsCallCompleted(t *testing.T) {
 
 	require.NoError(t, bus.Record(ctx, tools.CallRequested.New(tools.CallRequestedData{
 		CallID: "call_123",
-		Name:   "test.echo",
+		Name:   "test_echo",
 		Args:   `{"value":"hello"}`,
 	})))
 	require.NoError(t, bus.Drain(ctx))
@@ -78,7 +78,7 @@ func TestModuleEmitsErrorForToolFailure(t *testing.T) {
 
 	require.NoError(t, bus.Record(ctx, tools.CallRequested.New(tools.CallRequestedData{
 		CallID: "call_failed",
-		Name:   "test.fail",
+		Name:   "test_fail",
 		Args:   `{}`,
 	})))
 	require.NoError(t, bus.Drain(ctx))
@@ -109,7 +109,7 @@ type echoTool struct{}
 
 func (echoTool) Definition() tools.Definition {
 	return tools.Definition{
-		Name:        "test.echo",
+		Name:        "test_echo",
 		Description: "Echoes the input.",
 		Parameters:  json.RawMessage(`{"type":"object"}`),
 	}
@@ -123,7 +123,7 @@ type failingTool struct{}
 
 func (failingTool) Definition() tools.Definition {
 	return tools.Definition{
-		Name:        "test.fail",
+		Name:        "test_fail",
 		Description: "Always fails.",
 		Parameters:  json.RawMessage(`{"type":"object"}`),
 	}

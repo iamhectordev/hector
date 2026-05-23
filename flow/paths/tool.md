@@ -4,6 +4,9 @@ A named capability the agent can invoke during a loop turn.
 
 ## Principles
 - One file per tool, named after what it does (`timenow.go`, not `tool.go`)
+- New agent-facing tool names use `snake_case`; do not introduce dots in new tool names.
+- External provider names may use other formats; adapters normalize them to `snake_case` and keep the original provider name internally.
+- `tools.NewRegistry` rejects names that are not snake_case: a lowercase letter, then only lowercase letters, digits, and underscores.
 - Schema is inferred from the input type — no hand-written JSON
 - `Run()` never returns a Go error — all outcomes go through the envelope
 - Tools are registered at wiring time; no dynamic registration at runtime
@@ -19,7 +22,7 @@ type myInput struct {
 
 func NewMyTool() (tools.Tool, error) {
     return tools.New[myInput, string](
-        "my.tool",
+        "my_tool",
         "One sentence: what it returns, when to use it, what not to confuse it with.",
         func(ctx context.Context, in myInput) (string, error) {
             result, err := doWork(in.Query)
@@ -56,7 +59,7 @@ func NewMyTool(client SomeClient) (*MyTool, error) {
 
 func (t *MyTool) Definition() tools.Definition {
     return tools.Definition{
-        Name:        "my.tool",
+        Name:        "my_tool",
         Description: "One sentence: what it returns, when to use it, what not to confuse it with.",
         Parameters:  t.schema,
     }

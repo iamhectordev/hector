@@ -269,14 +269,14 @@ func TestCompleter_Complete_MapsToolsAndToolCalls(t *testing.T) {
 			{
 				Role: schema.RoleAssistant,
 				ToolCalls: []schema.ToolCall{
-					{ID: "call_prior", Name: "time.now", Arguments: json.RawMessage(`{}`)},
+					{ID: "call_prior", Name: "time_now", Arguments: json.RawMessage(`{}`)},
 				},
 			},
 			schema.ToolResultMessage("call_prior", "Monday, 2026-05-12 10:00:00 UTC"),
 		},
 		Tools: []schema.ToolDefinition{
 			{
-				Name:        "time.now",
+				Name:        "time_now",
 				Description: "Returns the current UTC time.",
 				Parameters:  json.RawMessage(`{"type":"object","properties":{},"additionalProperties":false}`),
 			},
@@ -287,7 +287,7 @@ func TestCompleter_Complete_MapsToolsAndToolCalls(t *testing.T) {
 		Role:         schema.RoleAssistant,
 		FinishReason: schema.FinishReasonToolCalls,
 		ToolCalls: []schema.ToolCall{
-			{ID: "call_123", Name: "time.now", Arguments: json.RawMessage(`{}`)},
+			{ID: "call_123", Name: "time_now", Arguments: json.RawMessage(`{}`)},
 		},
 	}, reply)
 

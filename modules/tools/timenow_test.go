@@ -14,7 +14,7 @@ func TestTimeNowDefinition(t *testing.T) {
 	require.NoError(t, err)
 
 	def := tool.Definition()
-	require.Equal(t, "time.now", def.Name)
+	require.Equal(t, "time_now", def.Name)
 	require.NotEmpty(t, def.Description)
 	require.NotEmpty(t, def.Parameters)
 }
