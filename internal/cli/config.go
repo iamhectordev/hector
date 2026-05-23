@@ -7,6 +7,7 @@ import (
 	"github.com/doron-cohen/klee"
 	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
+	"github.com/iamhectordev/hector/modules/github"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/llm"
 )
@@ -16,6 +17,7 @@ type Config struct {
 	kleelog.Config `yaml:"log"`
 	DB             dbsqlite.Config `yaml:"db"`
 	LLM            llm.Config      `yaml:"llm"`
+	GitHub         github.Config   `yaml:"github"`
 	Slack          slack.Config    `yaml:"slack"`
 }
 

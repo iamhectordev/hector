@@ -7,6 +7,7 @@ import (
 	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/modules/agent"
+	"github.com/iamhectordev/hector/modules/github"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/comms"
@@ -64,6 +65,15 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
+	modules := []supervisor.Module{}
+	if cfg.GitHub.Configured() {
+		githubModule, err := github.NewModule(cfg.GitHub, github.WithLogger(logger.With("component", "module", "module", "github")))
+		if err != nil {
+			return err
+		}
+		modules = append(modules, githubModule)
+	}
+
 	slackModule, err := slack.NewModule(bus, cfg.Slack)
 	if err != nil {
 		return err
@@ -91,15 +101,16 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		agent.WithLogger(logger.With("component", "loop")),
 	)
 	sessionStore := sessionsqlite.NewStore(db)
-
-	sv, err := supervisor.New([]supervisor.Module{
+	modules = append(modules,
 		agent.NewModule(bus, loop,
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(sessionStore),
 		),
 		toolsModule,
 		slackModule,
-	},
+	)
+
+	sv, err := supervisor.New(modules,
 		supervisor.WithLogger(logger),
 		supervisor.WithPostInitHook("bus.start", bus.Start),
 		supervisor.WithPreStopHook("bus.drain", bus.Drain),
