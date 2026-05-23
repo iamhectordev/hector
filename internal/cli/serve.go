@@ -65,15 +65,6 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		return err
 	}
 
-	modules := []supervisor.Module{}
-	if cfg.GitHub.Configured() {
-		githubModule, err := github.NewModule(cfg.GitHub, github.WithLogger(logger.With("component", "module", "module", "github")))
-		if err != nil {
-			return err
-		}
-		modules = append(modules, githubModule)
-	}
-
 	slackModule, err := slack.NewModule(bus, cfg.Slack)
 	if err != nil {
 		return err
@@ -94,6 +85,18 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	toolsModule, err := tools.NewModule(bus, toolRegistry)
 	if err != nil {
 		return err
+	}
+	modules := []supervisor.Module{}
+	if cfg.GitHub.Configured() {
+		githubModule, err := github.NewModule(
+			cfg.GitHub,
+			github.WithLogger(logger.With("component", "module", "module", "github")),
+			github.WithToolRegistrar(toolRegistry),
+		)
+		if err != nil {
+			return err
+		}
+		modules = append(modules, githubModule)
 	}
 
 	loop := agent.NewLoop(completer,
