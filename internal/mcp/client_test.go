@@ -1,17 +1,15 @@
 package mcp_test
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/textproto"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"strconv"
 	"testing"
 
-	"github.com/iamhectordev/hector/internal/mcp"
+	hectormcp "github.com/iamhectordev/hector/internal/mcp"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,10 +18,13 @@ func TestClientListsAndCallsToolsOverStdio(t *testing.T) {
 
 	executable, err := os.Executable()
 	require.NoError(t, err)
-	client, err := mcp.NewClient(mcp.Config{
-		Command: executable,
-		Args:    []string{"-test.run=TestFakeMCPServer", "--"},
-		Env:     map[string]string{"HECTOR_MCP_TEST_SERVER": "1"},
+	client, err := hectormcp.NewClient(hectormcp.Config{
+		Transport: hectormcp.TransportStdio,
+		Stdio: hectormcp.StdioConfig{
+			Command: executable,
+			Args:    []string{"-test.run=TestFakeMCPServer", "--"},
+			Env:     map[string]string{"HECTOR_MCP_TEST_SERVER": "1"},
+		},
 	})
 	require.NoError(t, err)
 	require.NoError(t, client.Start(t.Context()))
@@ -35,7 +36,7 @@ func TestClientListsAndCallsToolsOverStdio(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tools, 1)
 	require.Equal(t, "repos.list", tools[0].Name)
-	require.JSONEq(t, `{"type":"object","properties":{"owner":{"type":"string"}}}`, string(tools[0].InputSchema))
+	require.JSONEq(t, `{"type":"object","properties":{"owner":{"type":"string"}},"required":["owner"],"additionalProperties":false}`, string(tools[0].InputSchema))
 
 	result, err := client.CallTool(t.Context(), "repos.list", json.RawMessage(`{"owner":"iamhectordev"}`))
 	require.NoError(t, err)
@@ -44,92 +45,84 @@ func TestClientListsAndCallsToolsOverStdio(t *testing.T) {
 	require.Equal(t, "listed repos", result.Content[0].Text)
 }
 
+func TestClientRejectsInvalidTaggedUnionConfig(t *testing.T) {
+	t.Parallel()
+
+	_, err := hectormcp.NewClient(hectormcp.Config{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mcp: transport is required")
+
+	_, err = hectormcp.NewClient(hectormcp.Config{Transport: hectormcp.TransportStreamableHTTP})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "mcp: streamable_http url is required")
+}
+
+func TestClientListsAndCallsToolsOverStreamableHTTP(t *testing.T) {
+	t.Parallel()
+
+	var gotAuthorization string
+	server := newFakeSDKServer()
+	handler := sdkmcp.NewStreamableHTTPHandler(func(*http.Request) *sdkmcp.Server {
+		return server
+	}, nil)
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuthorization = r.Header.Get("Authorization")
+		handler.ServeHTTP(w, r)
+	}))
+	t.Cleanup(httpServer.Close)
+
+	client, err := hectormcp.NewClient(hectormcp.Config{
+		Transport: hectormcp.TransportStreamableHTTP,
+		StreamableHTTP: hectormcp.StreamableHTTPConfig{
+			URL:                  httpServer.URL,
+			Headers:              map[string]string{"Authorization": "Bearer test-token"},
+			DisableStandaloneSSE: true,
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, client.Start(t.Context()))
+	t.Cleanup(func() {
+		require.NoError(t, client.Close())
+	})
+
+	tools, err := client.ListTools(t.Context())
+	require.NoError(t, err)
+	require.Len(t, tools, 1)
+	require.Equal(t, "Bearer test-token", gotAuthorization)
+
+	result, err := client.CallTool(t.Context(), "repos.list", json.RawMessage(`{"owner":"iamhectordev"}`))
+	require.NoError(t, err)
+	require.Equal(t, "listed repos", result.Content[0].Text)
+}
+
 func TestFakeMCPServer(t *testing.T) {
 	if os.Getenv("HECTOR_MCP_TEST_SERVER") != "1" {
 		return
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		request, err := readMessage(reader)
-		if err != nil {
-			if err == io.EOF {
-				os.Exit(0)
-			}
-			_, _ = fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		id := request["id"]
-		switch request["method"] {
-		case "tools/list":
-			writeMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      id,
-				"result": map[string]any{
-					"tools": []map[string]any{{
-						"name":        "repos.list",
-						"description": "Lists repositories.",
-						"inputSchema": map[string]any{
-							"type": "object",
-							"properties": map[string]any{
-								"owner": map[string]any{"type": "string"},
-							},
-						},
-					}},
-				},
-			})
-		case "tools/call":
-			writeMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      id,
-				"result": map[string]any{
-					"content": []map[string]any{{
-						"type": "text",
-						"text": "listed repos",
-					}},
-					"isError": false,
-				},
-			})
-		default:
-			writeMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      id,
-				"error": map[string]any{
-					"code":    -32601,
-					"message": "unknown method",
-				},
-			})
-		}
+	server := newFakeSDKServer()
+	if err := server.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func readMessage(reader *bufio.Reader) (map[string]any, error) {
-	headers, err := textproto.NewReader(reader).ReadMIMEHeader()
-	if err != nil {
-		return nil, err
-	}
-	length, err := strconv.Atoi(headers.Get("Content-Length"))
-	if err != nil {
-		return nil, err
-	}
-	body := make([]byte, length)
-	if _, err := io.ReadFull(reader, body); err != nil {
-		return nil, err
-	}
-	var message map[string]any
-	if err := json.Unmarshal(body, &message); err != nil {
-		return nil, err
-	}
-	return message, nil
+func newFakeSDKServer() *sdkmcp.Server {
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "fake", Version: "test"}, nil)
+	sdkmcp.AddTool(server, &sdkmcp.Tool{
+		Name:        "repos.list",
+		Description: "Lists repositories.",
+	}, func(_ context.Context, _ *sdkmcp.CallToolRequest, input listReposInput) (*sdkmcp.CallToolResult, listReposOutput, error) {
+		return &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "listed repos"}},
+		}, listReposOutput{OK: true}, nil
+	})
+	return server
 }
 
-func writeMessage(message map[string]any) {
-	body, err := json.Marshal(message)
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	_, _ = fmt.Fprintf(os.Stdout, "Content-Length: %d\r\n\r\n%s", len(body), body)
+type listReposInput struct {
+	Owner string `json:"owner"`
 }
 
-var _ = context.Background
+type listReposOutput struct {
+	OK bool `json:"ok"`
+}

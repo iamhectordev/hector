@@ -28,26 +28,87 @@ type Config struct {
 }
 
 type MCPConfig struct {
-	Command string            `yaml:"command" env:"GITHUB_MCP_COMMAND"`
-	Args    []string          `yaml:"args"`
-	Env     map[string]string `yaml:"env"`
+	Transport             mcp.Transport     `yaml:"transport" env:"GITHUB_MCP_TRANSPORT"`
+	StdioCommand          string            `yaml:"stdio_command" env:"GITHUB_MCP_STDIO_COMMAND"`
+	StdioArgs             []string          `yaml:"stdio_args"`
+	StdioEnv              map[string]string `yaml:"stdio_env"`
+	StreamableHTTPURL     string            `yaml:"streamable_http_url" env:"GITHUB_MCP_STREAMABLE_HTTP_URL"`
+	StreamableHTTPHeaders map[string]string `yaml:"streamable_http_headers"`
+	DisableStandaloneSSE  bool              `yaml:"disable_standalone_sse"`
+	SSEURL                string            `yaml:"sse_url" env:"GITHUB_MCP_SSE_URL"`
+	SSEHeaders            map[string]string `yaml:"sse_headers"`
+	Toolsets              string            `yaml:"toolsets" env:"GITHUB_MCP_TOOLSETS"`
+	Readonly              bool              `yaml:"readonly" env:"GITHUB_MCP_READONLY"`
 }
 
 func (c MCPConfig) Configured() bool {
-	return c.Command != ""
+	return c.Transport != "" || c.StdioCommand != "" || c.StreamableHTTPURL != "" || c.SSEURL != ""
 }
 
 func (c MCPConfig) config(token AccessToken) mcp.Config {
-	env := make(map[string]string, len(c.Env)+1)
-	for key, value := range c.Env {
-		env[key] = value
-	}
-	if token.Value != "" {
-		if _, exists := env["GITHUB_PERSONAL_ACCESS_TOKEN"]; !exists {
-			env["GITHUB_PERSONAL_ACCESS_TOKEN"] = token.Value
+	transport := c.Transport
+	if transport == "" {
+		switch {
+		case c.StreamableHTTPURL != "":
+			transport = mcp.TransportStreamableHTTP
+		case c.SSEURL != "":
+			transport = mcp.TransportSSE
+		default:
+			transport = mcp.TransportStdio
 		}
 	}
-	return mcp.Config{Command: c.Command, Args: c.Args, Env: env}
+	cfg := mcp.Config{Transport: transport}
+	cfg.Stdio = mcp.StdioConfig{
+		Command: c.StdioCommand,
+		Args:    append([]string{}, c.StdioArgs...),
+		Env:     cloneStringMap(c.StdioEnv),
+	}
+	if token.Value != "" {
+		if cfg.Stdio.Env == nil {
+			cfg.Stdio.Env = map[string]string{}
+		}
+		if _, exists := cfg.Stdio.Env["GITHUB_PERSONAL_ACCESS_TOKEN"]; !exists {
+			cfg.Stdio.Env["GITHUB_PERSONAL_ACCESS_TOKEN"] = token.Value
+		}
+	}
+	cfg.StreamableHTTP = mcp.StreamableHTTPConfig{
+		URL:                  c.StreamableHTTPURL,
+		Headers:              c.httpHeaders(token, c.StreamableHTTPHeaders),
+		DisableStandaloneSSE: c.DisableStandaloneSSE,
+	}
+	cfg.SSE = mcp.SSEConfig{
+		URL:     c.SSEURL,
+		Headers: c.httpHeaders(token, c.SSEHeaders),
+	}
+	return cfg
+}
+
+func (c MCPConfig) httpHeaders(token AccessToken, configured map[string]string) map[string]string {
+	headers := cloneStringMap(configured)
+	if headers == nil {
+		headers = map[string]string{}
+	}
+	if token.Value != "" {
+		headers["Authorization"] = "Bearer " + token.Value
+	}
+	if c.Toolsets != "" {
+		headers["X-MCP-Toolsets"] = c.Toolsets
+	}
+	if c.Readonly {
+		headers["X-MCP-Readonly"] = "true"
+	}
+	return headers
+}
+
+func cloneStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
 }
 
 // Configured reports whether any GitHub integration config was provided.

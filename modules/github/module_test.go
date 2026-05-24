@@ -1,21 +1,20 @@
 package github_test
 
 import (
-	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/textproto"
 	"os"
-	"strconv"
 	"testing"
 
+	"github.com/iamhectordev/hector/internal/mcp"
 	hectorgithub "github.com/iamhectordev/hector/modules/github"
 	"github.com/iamhectordev/hector/modules/tools"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
@@ -89,9 +88,10 @@ func TestModuleInitRegistersMCPTools(t *testing.T) {
 		PrivateKeyPath: privateKeyPath,
 		APIURL:         server.URL,
 		MCP: hectorgithub.MCPConfig{
-			Command: executable,
-			Args:    []string{"-test.run=TestGitHubFakeMCPServer", "--"},
-			Env:     map[string]string{"HECTOR_GITHUB_MCP_TEST_SERVER": "1"},
+			Transport:    mcp.TransportStdio,
+			StdioCommand: executable,
+			StdioArgs:    []string{"-test.run=TestGitHubFakeMCPServer", "--"},
+			StdioEnv:     map[string]string{"HECTOR_GITHUB_MCP_TEST_SERVER": "1"},
 		},
 	}, hectorgithub.WithToolRegistrar(registry))
 	require.NoError(t, err)
@@ -119,77 +119,24 @@ func TestGitHubFakeMCPServer(t *testing.T) {
 		os.Exit(1)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		request, err := readMCPMessage(reader)
-		if err != nil {
-			if err == io.EOF {
-				os.Exit(0)
-			}
-			_, _ = fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		id := request["id"]
-		switch request["method"] {
-		case "tools/list":
-			writeMCPMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      id,
-				"result": map[string]any{
-					"tools": []map[string]any{{
-						"name":        "repos.list",
-						"description": "Lists repositories.",
-						"inputSchema": map[string]any{
-							"type":       "object",
-							"properties": map[string]any{"owner": map[string]any{"type": "string"}},
-						},
-					}},
-				},
-			})
-		case "tools/call":
-			writeMCPMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      id,
-				"result": map[string]any{
-					"content": []map[string]any{{"type": "text", "text": "listed repos"}},
-					"isError": false,
-				},
-			})
-		default:
-			writeMCPMessage(map[string]any{
-				"jsonrpc": "2.0",
-				"id":      id,
-				"error":   map[string]any{"code": -32601, "message": "unknown method"},
-			})
-		}
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "fake-github", Version: "test"}, nil)
+	sdkmcp.AddTool(server, &sdkmcp.Tool{
+		Name:        "repos.list",
+		Description: "Lists repositories.",
+	}, func(_ context.Context, _ *sdkmcp.CallToolRequest, input listReposInput) (*sdkmcp.CallToolResult, listReposOutput, error) {
+		return &sdkmcp.CallToolResult{
+			Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: "listed repos"}},
+		}, listReposOutput{OK: true}, nil
+	})
+	if err := server.Run(context.Background(), &sdkmcp.StdioTransport{}); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func readMCPMessage(reader *bufio.Reader) (map[string]any, error) {
-	headers, err := textproto.NewReader(reader).ReadMIMEHeader()
-	if err != nil {
-		return nil, err
-	}
-	length, err := strconv.Atoi(headers.Get("Content-Length"))
-	if err != nil {
-		return nil, err
-	}
-	body := make([]byte, length)
-	if _, err := io.ReadFull(reader, body); err != nil {
-		return nil, err
-	}
-	var message map[string]any
-	if err := json.Unmarshal(body, &message); err != nil {
-		return nil, err
-	}
-	return message, nil
+type listReposInput struct {
+	Owner string `json:"owner"`
 }
 
-func writeMCPMessage(message map[string]any) {
-	body, err := json.Marshal(message)
-	if err != nil {
-		_, _ = fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	_, _ = fmt.Fprintf(os.Stdout, "Content-Length: %d\r\n\r\n%s", len(body), body)
+type listReposOutput struct {
+	OK bool `json:"ok"`
 }
