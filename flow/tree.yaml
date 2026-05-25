@@ -1,94 +1,100 @@
 - slug: presence
   title: Presence
-  description: How Hector shows up — tone, timing, and initiative as experienced by people
+  description: How Hector shows up — tone, timing, and initiative as experienced by
+    people
   status: open
   priority: P0
   open_questions: []
   children:
-    - slug: presence.tone_adaptation
-      title: Tone Adaptation
-      description: Hector matches tone and format to the context and medium
-      status: idea
-      priority: P0
-      stories:
-        - Hector reads the room and matches tone — casual one-liner in a thread, structured in an announcement
-        - Hector formats output for the medium — Slack reply vs PR comment vs README
-      open_questions: []
-      children: []
-    - slug: presence.message_timing
-      title: Message Timing and Steering
-      description: Hector knows when to wait, when to respond, and when to steer
-      status: idea
-      priority: P0
-      stories:
-        - Hector waits when a user is sending multiple messages before jumping in
-        - Hector detects when steering the conversation is better than answering directly
-        - Hector batches and queues messages when responding immediately would be premature
-      open_questions: []
-      children: []
-    - slug: presence.follow_up
-      title: Proactive Follow-up
-      description: Hector returns to threads it missed or where the outcome is unknown
-      status: idea
-      priority: P0
-      stories:
-        - Hector returns to threads it missed and contributes if still relevant
-        - Hector checks back on open issues to ask if they were resolved
-        - Hector notices when a conversation went quiet without resolution and re-engages
-      open_questions: []
-      children: []
-    - slug: presence.human_likeness
-      title: Human Likeness
-      description: Hector feels like a colleague, not a bot responding to commands
-      status: idea
-      priority: P0
-      stories:
-        - Hector initiates when it has something genuinely useful to contribute
-        - Hector never feels like a bot waiting to be commanded
-      open_questions: []
-      children: []
-
+  - slug: presence.tone_adaptation
+    title: Tone Adaptation
+    description: Hector matches tone and format to the context and medium
+    status: idea
+    priority: P0
+    stories:
+    - Hector reads the room and matches tone — casual one-liner in a thread, structured
+      in an announcement
+    - Hector formats output for the medium — Slack reply vs PR comment vs README
+    open_questions: []
+    children: []
+  - slug: presence.message_timing
+    title: Message Timing and Steering
+    description: Hector knows when to wait, when to respond, and when to steer
+    status: idea
+    priority: P0
+    stories:
+    - Hector waits when a user is sending multiple messages before jumping in
+    - Hector detects when steering the conversation is better than answering directly
+    - Hector batches and queues messages when responding immediately would be premature
+    open_questions: []
+    children: []
+  - slug: presence.follow_up
+    title: Proactive Follow-up
+    description: Hector returns to threads it missed or where the outcome is unknown
+    status: idea
+    priority: P0
+    stories:
+    - Hector returns to threads it missed and contributes if still relevant
+    - Hector checks back on open issues to ask if they were resolved
+    - Hector notices when a conversation went quiet without resolution and re-engages
+    open_questions: []
+    children: []
+  - slug: presence.human_likeness
+    title: Human Likeness
+    description: Hector feels like a colleague, not a bot responding to commands
+    status: idea
+    priority: P0
+    stories:
+    - Hector initiates when it has something genuinely useful to contribute
+    - Hector never feels like a bot waiting to be commanded
+    open_questions: []
+    children: []
 - slug: awareness
   title: Awareness
-  description: How Hector reads the environment — the platform, the conversation, and the people in it
+  description: How Hector reads the environment — the platform, the conversation,
+    and the people in it
   status: open
   priority: P0
   open_questions: []
   children:
-    - slug: awareness.source_context
-      title: Source Context
-      description: Hector knows where a message came from — platform, channel, thread, and conversation type
-      status: idea
-      priority: P0
-      stories:
-        - Hector knows it is in a Slack DM vs a public channel and has that available as context
-        - Hector knows the channel name, channel ID, and thread ID for every message it receives
-        - Hector knows which platform a message came from — Slack, GitHub, JIRA — without being told
-      open_questions: []
-      children: []
-    - slug: awareness.people
-      title: People Awareness
-      description: Hector knows who it is talking to and uses that to ground its responses
-      status: idea
-      priority: P0
-      stories:
-        - Hector knows the username and display name of whoever sent a message
-        - Hector knows when it is talking to someone for the first time vs a returning user
-        - Hector understands a person's role and adjusts how it communicates accordingly
-      open_questions: []
-      children: []
-    - slug: awareness.entity_recognition
-      title: Entity Recognition
-      description: Hector resolves terms, repos, and names from accumulated knowledge
-      status: idea
-      priority: P0
-      stories:
-        - When I mention a term Hector has learned, it understands without me explaining
-        - When I mention a repo by nickname, Hector resolves which one without asking
-        - When I mention a person, Hector knows their role and has prior context on them
-      open_questions: []
-      children: []
-
+  - slug: awareness.source_context
+    title: Source Context
+    description: Hector knows where a message came from — platform, channel, thread,
+      and conversation type
+    status: idea
+    priority: P0
+    stories:
+    - Hector knows it is in a Slack DM vs a public channel and has that available
+      as context
+    - Hector knows the channel name, channel ID, and thread ID for every message it
+      receives
+    - Hector knows which platform a message came from — Slack, GitHub, JIRA — without
+      being told
+    open_questions: []
+    children: []
+  - slug: awareness.people
+    title: People Awareness
+    description: Hector knows who it is talking to and uses that to ground its responses
+    status: idea
+    priority: P0
+    stories:
+    - Hector knows the username and display name of whoever sent a message
+    - Hector knows when it is talking to someone for the first time vs a returning
+      user
+    - Hector understands a person's role and adjusts how it communicates accordingly
+    open_questions: []
+    children: []
+  - slug: awareness.entity_recognition
+    title: Entity Recognition
+    description: Hector resolves terms, repos, and names from accumulated knowledge
+    status: idea
+    priority: P0
+    stories:
+    - When I mention a term Hector has learned, it understands without me explaining
+    - When I mention a repo by nickname, Hector resolves which one without asking
+    - When I mention a person, Hector knows their role and has prior context on them
+    open_questions: []
+    children: []
 - slug: sessions
   title: Sessions
   description: How Hector tracks, links, and switches between units of ongoing work
@@ -96,50 +102,53 @@
   priority: P0
   open_questions: []
   children:
-    - slug: sessions.lifecycle
-      title: Session Lifecycle
-      description: Sessions are created, anchored to a thread, and closed when work is done
-      status: idea
-      priority: P0
-      stories:
-        - A session starts when Hector is engaged in a thread or conversation
-        - Sessions persist with best-effort continuity across restarts
-      open_questions: []
-      children: []
-    - slug: sessions.linking
-      title: Session Linking
-      description: Sessions across integrations can be linked into one piece of work
-      status: idea
-      priority: P0
-      stories:
-        - Dropping a PR link in a Slack thread connects the two into one session
-        - Hector suggests linking when it infers two threads are about the same work
-        - Links can be made explicitly by the user, suggested by Hector, or inferred automatically
-      open_questions: []
-      children: []
-    - slug: sessions.switching
-      title: Session Switching
-      description: Hector handles multiple open sessions and moves between them fluidly
-      status: idea
-      priority: P0
-      stories:
-        - Hector handles multiple open sessions simultaneously without losing context
-        - Hector jumps to another session, does something, and returns — context is never lost
-        - Hector can shift focus fully to a new session when appropriate
-      open_questions: []
-      children: []
-    - slug: sessions.compaction
-      title: Session Compaction
-      description: Session history is actively maintained to stay useful, not just accurate
-      status: idea
-      priority: P0
-      stories:
-        - Hector continuously compacts session history as understanding evolves
-        - Hector annotates, restructures, and edits session history to serve the current work
-        - Hector keeps a floating reminder at the end of a session when something must not be forgotten
-      open_questions: []
-      children: []
-
+  - slug: sessions.lifecycle
+    title: Session Lifecycle
+    description: Sessions are created, anchored to a thread, and closed when work
+      is done
+    status: idea
+    priority: P0
+    stories:
+    - A session starts when Hector is engaged in a thread or conversation
+    - Sessions persist with best-effort continuity across restarts
+    open_questions: []
+    children: []
+  - slug: sessions.linking
+    title: Session Linking
+    description: Sessions across integrations can be linked into one piece of work
+    status: idea
+    priority: P0
+    stories:
+    - Dropping a PR link in a Slack thread connects the two into one session
+    - Hector suggests linking when it infers two threads are about the same work
+    - Links can be made explicitly by the user, suggested by Hector, or inferred automatically
+    open_questions: []
+    children: []
+  - slug: sessions.switching
+    title: Session Switching
+    description: Hector handles multiple open sessions and moves between them fluidly
+    status: idea
+    priority: P0
+    stories:
+    - Hector handles multiple open sessions simultaneously without losing context
+    - Hector jumps to another session, does something, and returns — context is never
+      lost
+    - Hector can shift focus fully to a new session when appropriate
+    open_questions: []
+    children: []
+  - slug: sessions.compaction
+    title: Session Compaction
+    description: Session history is actively maintained to stay useful, not just accurate
+    status: idea
+    priority: P0
+    stories:
+    - Hector continuously compacts session history as understanding evolves
+    - Hector annotates, restructures, and edits session history to serve the current
+      work
+    - Hector keeps a floating reminder at the end of a session when something must
+      not be forgotten
+    open_questions: []
+    children: []
 - slug: mem
   title: Memory
   description: How Hector retains and recalls knowledge across time and conversations
@@ -147,71 +156,77 @@
   priority: P0
   open_questions: []
   children:
-    - slug: mem.episodic_recall
-      title: Episodic Recall
-      description: Hector recognizes patterns across time and surfaces relevant past context
-      status: idea
-      priority: P0
-      stories:
-        - Hector notices when the same issue has come up before and says so
-        - Hector surfaces relevant past context unprompted when it seems useful
-        - Hector flags recurring problems and suggests fixing them at the source
-      open_questions: []
-      children: []
-    - slug: mem.continuous_learning
-      title: Continuous Learning
-      description: Hector learns team conventions and preferences from interactions over time
-      status: idea
-      priority: P0
-      stories:
-        - Hector learns team conventions from repeated interactions and applies them without being told
-        - Hector gets better at tasks the more context it accumulates over time
-        - Hector picks up on preferred formats, terminology, and practices organically
-      open_questions: []
-      children: []
-
+  - slug: mem.episodic_recall
+    title: Episodic Recall
+    description: Hector recognizes patterns across time and surfaces relevant past
+      context
+    status: idea
+    priority: P0
+    stories:
+    - Hector notices when the same issue has come up before and says so
+    - Hector surfaces relevant past context unprompted when it seems useful
+    - Hector flags recurring problems and suggests fixing them at the source
+    open_questions: []
+    children: []
+  - slug: mem.continuous_learning
+    title: Continuous Learning
+    description: Hector learns team conventions and preferences from interactions
+      over time
+    status: idea
+    priority: P0
+    stories:
+    - Hector learns team conventions from repeated interactions and applies them without
+      being told
+    - Hector gets better at tasks the more context it accumulates over time
+    - Hector picks up on preferred formats, terminology, and practices organically
+    open_questions: []
+    children: []
 - slug: policies
   title: Policies
-  description: Expressive access control — who can interact with Hector, how, and with what tools
+  description: Expressive access control — who can interact with Hector, how, and
+    with what tools
   status: open
   priority: P0
   open_questions: []
   children:
-    - slug: policies.access_control
-      title: Access Control
-      description: Admins define who can interact with Hector and through which sources and channel types
-      status: idea
-      priority: P0
-      stories:
-        - Admins configure which users can interact with Hector
-        - Admins specify allowed sources per user — Slack, GitHub PR comments, JIRA, etc.
-        - Admins restrict channel types — threads only, no DMs, public channels only
-        - Policies are expressive, validated quickly, and produce clear errors
-      open_questions: []
-      children: []
-    - slug: policies.tool_permissions
-      title: Tool Permissions
-      description: Admins control which tools each user can trigger, using read/write tags
-      status: idea
-      priority: P0
-      stories:
-        - Tools are tagged read or write and policies can reference those tags
-        - Admins define which tools each user or role can invoke
-        - A user can be limited to read-only tools or a specific integration's tools
-      open_questions: []
-      children: []
-    - slug: policies.account_routing
-      title: Account Routing
-      description: Policies assign the right account or token to each tool call based on user and context
-      status: idea
-      priority: P0
-      stories:
-        - Admins assign accounts or tokens to teams or individual users
-        - When Hector calls a tool, the correct account is selected by policy automatically
-        - Users can configure their own account so Hector acts on their behalf for write operations
-      open_questions: []
-      children: []
-
+  - slug: policies.access_control
+    title: Access Control
+    description: Admins define who can interact with Hector and through which sources
+      and channel types
+    status: idea
+    priority: P0
+    stories:
+    - Admins configure which users can interact with Hector
+    - Admins specify allowed sources per user — Slack, GitHub PR comments, JIRA, etc.
+    - Admins restrict channel types — threads only, no DMs, public channels only
+    - Policies are expressive, validated quickly, and produce clear errors
+    open_questions: []
+    children: []
+  - slug: policies.tool_permissions
+    title: Tool Permissions
+    description: Admins control which tools each user can trigger, using read/write
+      tags
+    status: idea
+    priority: P0
+    stories:
+    - Tools are tagged read or write and policies can reference those tags
+    - Admins define which tools each user or role can invoke
+    - A user can be limited to read-only tools or a specific integration's tools
+    open_questions: []
+    children: []
+  - slug: policies.account_routing
+    title: Account Routing
+    description: Policies assign the right account or token to each tool call based
+      on user and context
+    status: idea
+    priority: P0
+    stories:
+    - Admins assign accounts or tokens to teams or individual users
+    - When Hector calls a tool, the correct account is selected by policy automatically
+    - Users can configure their own account so Hector acts on their behalf for write
+      operations
+    open_questions: []
+    children: []
 - slug: approvals
   title: Approvals
   description: Hector asks before it acts on anything that matters
@@ -219,37 +234,40 @@
   priority: P0
   open_questions: []
   children:
-    - slug: approvals.write_review
-      title: Write Operation Review
-      description: Almost every write operation requires a human sign-off before Hector executes
-      status: idea
-      priority: P0
-      stories:
-        - Hector does not execute write operations without explicit approval
-        - Approvals can be required by policy or triggered by Hector's own judgment
-      open_questions: []
-      children: []
-    - slug: approvals.conversational
-      title: Conversational Approval
-      description: Hector previews its intended action in the conversation and waits for a go-ahead
-      status: idea
-      priority: P0
-      stories:
-        - Hector shows what it is about to do in plain language and waits for confirmation
-        - The user can adjust, reject, or approve directly in the thread
-      open_questions: []
-      children: []
-    - slug: approvals.structured
-      title: Structured Approval
-      description: Hector presents a structured approval screen for high-stakes or complex actions
-      status: idea
-      priority: P0
-      stories:
-        - For complex actions, Hector presents structured fields for the user to review before confirming
-        - The approval screen shows exactly what will happen — no surprises after confirmation
-      open_questions: []
-      children: []
-
+  - slug: approvals.write_review
+    title: Write Operation Review
+    description: Almost every write operation requires a human sign-off before Hector
+      executes
+    status: idea
+    priority: P0
+    stories:
+    - Hector does not execute write operations without explicit approval
+    - Approvals can be required by policy or triggered by Hector's own judgment
+    open_questions: []
+    children: []
+  - slug: approvals.conversational
+    title: Conversational Approval
+    description: Hector previews its intended action in the conversation and waits
+      for a go-ahead
+    status: idea
+    priority: P0
+    stories:
+    - Hector shows what it is about to do in plain language and waits for confirmation
+    - The user can adjust, reject, or approve directly in the thread
+    open_questions: []
+    children: []
+  - slug: approvals.structured
+    title: Structured Approval
+    description: Hector presents a structured approval screen for high-stakes or complex
+      actions
+    status: idea
+    priority: P0
+    stories:
+    - For complex actions, Hector presents structured fields for the user to review
+      before confirming
+    - The approval screen shows exactly what will happen — no surprises after confirmation
+    open_questions: []
+    children: []
 - slug: isolation
   title: Isolation
   description: Strict separation of data and context across tenants, users, and agents
@@ -257,75 +275,82 @@
   priority: P0
   open_questions: []
   children:
-    - slug: isolation.tenant
-      title: Tenant Separation
-      description: No information leaks between tenants under any circumstances
-      status: idea
-      priority: P0
-      stories:
-        - No data, memory, or context ever crosses tenant boundaries
-        - Anonymous cross-tenant experience transfer may be enabled in future — without any identifying information
-      open_questions: []
-      children: []
-    - slug: isolation.user
-      title: User Permission Isolation
-      description: Hector respects user permission levels and does not surface data users cannot access
-      status: idea
-      priority: P0
-      stories:
-        - Hector does not expose data to users who lack permission to see it
-        - When Hector accesses a system on behalf of a user, it uses that user's access level
-      open_questions: []
-      children: []
-    - slug: isolation.agent
-      title: Agent Context Isolation
-      description: Agent sessions and memory are not shared between agents unless explicitly configured
-      status: idea
-      priority: P1
-      stories:
-        - Agent A does not load Agent B's sessions or memory unless sharing is configured
-        - Isolation between agents is about relevance and correctness, not just security
-      open_questions: []
-      children: []
-
+  - slug: isolation.tenant
+    title: Tenant Separation
+    description: No information leaks between tenants under any circumstances
+    status: idea
+    priority: P0
+    stories:
+    - No data, memory, or context ever crosses tenant boundaries
+    - Anonymous cross-tenant experience transfer may be enabled in future — without
+      any identifying information
+    open_questions: []
+    children: []
+  - slug: isolation.user
+    title: User Permission Isolation
+    description: Hector respects user permission levels and does not surface data
+      users cannot access
+    status: idea
+    priority: P0
+    stories:
+    - Hector does not expose data to users who lack permission to see it
+    - When Hector accesses a system on behalf of a user, it uses that user's access
+      level
+    open_questions: []
+    children: []
+  - slug: isolation.agent
+    title: Agent Context Isolation
+    description: Agent sessions and memory are not shared between agents unless explicitly
+      configured
+    status: idea
+    priority: P1
+    stories:
+    - Agent A does not load Agent B's sessions or memory unless sharing is configured
+    - Isolation between agents is about relevance and correctness, not just security
+    open_questions: []
+    children: []
 - slug: security
   title: Security
-  description: Protecting against injection, credential misuse, and unauthorized tool use
+  description: Protecting against injection, credential misuse, and unauthorized tool
+    use
   status: open
   priority: P0
   open_questions: []
   children:
-    - slug: security.prompt_injection
-      title: Prompt Injection Defense
-      description: Hector detects and resists prompt injection attempts from external content
-      status: idea
-      priority: P0
-      stories:
-        - Hector does not follow instructions embedded in external content it reads
-        - Hector flags suspected injection attempts and escalates rather than complying
-      open_questions: []
-      children: []
-    - slug: security.credential_handling
-      title: Credential Handling
-      description: Customer credentials are stored and accessed securely and never leak into context
-      status: idea
-      priority: P0
-      stories:
-        - Tokens and credentials are never exposed in logs, session history, or model context
-        - Credentials are stored securely and accessed only at the point of use
-      open_questions: []
-      children: []
-    - slug: security.tool_auth
-      title: Tool Authorization
-      description: Tools can only be invoked by verified, authorized agents
-      status: idea
-      priority: P0
-      stories:
-        - Tool calls are authenticated — a rogue or injected agent cannot invoke tools freely
-        - Every tool invocation is tied to an authorized agent identity
-      open_questions: []
-      children: []
-
+  - slug: security.prompt_injection
+    title: Prompt Injection Defense
+    description: Hector detects and resists prompt injection attempts from external
+      content
+    status: idea
+    priority: P0
+    stories:
+    - Hector does not follow instructions embedded in external content it reads
+    - Hector flags suspected injection attempts and escalates rather than complying
+    open_questions: []
+    children: []
+  - slug: security.credential_handling
+    title: Credential Handling
+    description: Customer credentials are stored and accessed securely and never leak
+      into context
+    status: idea
+    priority: P0
+    stories:
+    - Tokens and credentials are never exposed in logs, session history, or model
+      context
+    - Credentials are stored securely and accessed only at the point of use
+    open_questions: []
+    children: []
+  - slug: security.tool_auth
+    title: Tool Authorization
+    description: Tools can only be invoked by verified, authorized agents
+    status: idea
+    priority: P0
+    stories:
+    - Tool calls are authenticated — a rogue or injected agent cannot invoke tools
+      freely
+    - Every tool invocation is tied to an authorized agent identity
+    open_questions: []
+    children: []
 - slug: integrations
   title: Integrations
   description: Adapters for external systems — full fidelity, account-aware
@@ -333,83 +358,83 @@
   priority: P1
   open_questions: []
   children:
-    - slug: integrations.slack_read
-      title: Slack Read
-      description: Full-fidelity Slack message ingestion — text, reactions, media, threads
-      status: idea
-      priority: P1
-      stories:
-        - Hector reads the full text of a Slack message including formatting, mentions, and emoji
-        - Hector sees all reactions on a message — who reacted and with what emoji
-        - Hector knows when a message has been edited and can see the current version
-        - Hector reads images attached to a message, passing them to the model
-        - Hector reads files attached to a message
-        - Hector reads the thread context — the parent message and all replies in order
-        - Hector reads link previews and unfurled content inline with the message
-      open_questions: []
-      children: []
-    - slug: integrations.slack_write
-      title: Slack Write
-      description: Human-like Slack output — post, reply, react, share, forward
-      status: idea
-      priority: P1
-      stories:
-        - Hector posts a message to a channel
-        - Hector replies in a thread
-        - Hector reacts to a message with an emoji
-        - Hector shares an image in a message
-        - Hector forwards a message to another channel or thread
-      open_questions: []
-      children: []
-    - slug: integrations.github_projects
-      title: GitHub Project Management
-      description: GitHub issue and milestone management — create, update, label, block
-      status: idea
-      priority: P1
-      stories:
-        - Hector creates and updates milestones
-        - Hector creates, reads, and updates issues
-        - Hector writes issue comments
-        - Hector lists and filters issues by milestone, status, and label
-        - Hector assigns milestones and labels to issues
-        - Hector creates and manages labels
-        - Hector closes issues
-        - Hector marks issues as blocked by other issues and reads blocking relationships
-      open_questions: []
-      children: []
-    - slug: integrations.github_code
-      title: GitHub Code Collaboration
-      description: GitHub code collaboration — PRs, reviews, PR comments
-      status: idea
-      priority: P1
-      stories:
-        - Hector reads and writes PR comments
-        - Hector submits PR reviews
-        - Hector opens and reads pull requests
-        - Hector tracks PR state — open, merged, closed, draft
-      open_questions: []
-      children: []
-    - slug: integrations.jira
-      title: JIRA
-      description: JIRA integration — tickets, comments, transitions
-      status: idea
-      priority: P1
-      stories:
-        - Hector reads JIRA tickets and their context
-        - Hector can create tickets, add comments, and transition status
-      open_questions: []
-      children: []
-    - slug: integrations.accounts
-      title: Account Management
-      description: Multiple accounts per integration, routed by policy
-      status: idea
-      priority: P1
-      stories:
-        - Multiple accounts can be configured per integration
-        - The correct account is selected per tool call based on policy
-      open_questions: []
-      children: []
-
+  - slug: integrations.slack_read
+    title: Slack Read
+    description: Full-fidelity Slack message ingestion — text, reactions, media, threads
+    status: idea
+    priority: P1
+    stories:
+    - Hector reads the full text of a Slack message including formatting, mentions,
+      and emoji
+    - Hector sees all reactions on a message — who reacted and with what emoji
+    - Hector knows when a message has been edited and can see the current version
+    - Hector reads images attached to a message, passing them to the model
+    - Hector reads files attached to a message
+    - Hector reads the thread context — the parent message and all replies in order
+    - Hector reads link previews and unfurled content inline with the message
+    open_questions: []
+    children: []
+  - slug: integrations.slack_write
+    title: Slack Write
+    description: Human-like Slack output — post, reply, react, share, forward
+    status: idea
+    priority: P1
+    stories:
+    - Hector posts a message to a channel
+    - Hector replies in a thread
+    - Hector reacts to a message with an emoji
+    - Hector shares an image in a message
+    - Hector forwards a message to another channel or thread
+    open_questions: []
+    children: []
+  - slug: integrations.github_projects
+    title: GitHub Project Management
+    description: GitHub issue and milestone management — create, update, label, block
+    status: idea
+    priority: P1
+    stories:
+    - Hector creates and updates milestones
+    - Hector creates, reads, and updates issues
+    - Hector writes issue comments
+    - Hector lists and filters issues by milestone, status, and label
+    - Hector assigns milestones and labels to issues
+    - Hector creates and manages labels
+    - Hector closes issues
+    - Hector marks issues as blocked by other issues and reads blocking relationships
+    open_questions: []
+    children: []
+  - slug: integrations.github_code
+    title: GitHub Code Collaboration
+    description: GitHub code collaboration — PRs, reviews, PR comments
+    status: idea
+    priority: P1
+    stories:
+    - Hector reads and writes PR comments
+    - Hector submits PR reviews
+    - Hector opens and reads pull requests
+    - Hector tracks PR state — open, merged, closed, draft
+    open_questions: []
+    children: []
+  - slug: integrations.jira
+    title: JIRA
+    description: JIRA integration — tickets, comments, transitions
+    status: idea
+    priority: P1
+    stories:
+    - Hector reads JIRA tickets and their context
+    - Hector can create tickets, add comments, and transition status
+    open_questions: []
+    children: []
+  - slug: integrations.accounts
+    title: Account Management
+    description: Multiple accounts per integration, routed by policy
+    status: idea
+    priority: P1
+    stories:
+    - Multiple accounts can be configured per integration
+    - The correct account is selected per tool call based on policy
+    open_questions: []
+    children: []
 - slug: audit
   title: Audit
   description: Customer-facing record of everything Hector did and why
@@ -417,37 +442,36 @@
   priority: P1
   open_questions: []
   children:
-    - slug: audit.action_log
-      title: Action Log
-      description: Every action Hector takes is logged with full context
-      status: idea
-      priority: P1
-      stories:
-        - Every tool call, message, and decision is logged
-        - The log is inspectable — a user can see exactly what Hector did and why
-      open_questions: []
-      children: []
-    - slug: audit.policy_eval
-      title: Policy Evaluation Audit
-      description: Policy decisions are recorded and inspectable
-      status: idea
-      priority: P1
-      stories:
-        - Every policy evaluation is recorded — what matched, what was allowed or denied
-        - Admins can trace why Hector did or did not take an action back to policy
-      open_questions: []
-      children: []
-    - slug: audit.approval_trail
-      title: Approval Trail
-      description: Every approval and rejection is recorded
-      status: idea
-      priority: P1
-      stories:
-        - Approvals and rejections are logged with who approved, when, and what was approved
-        - The approval trail is linked to the action that followed
-      open_questions: []
-      children: []
-
+  - slug: audit.action_log
+    title: Action Log
+    description: Every action Hector takes is logged with full context
+    status: idea
+    priority: P1
+    stories:
+    - Every tool call, message, and decision is logged
+    - The log is inspectable — a user can see exactly what Hector did and why
+    open_questions: []
+    children: []
+  - slug: audit.policy_eval
+    title: Policy Evaluation Audit
+    description: Policy decisions are recorded and inspectable
+    status: idea
+    priority: P1
+    stories:
+    - Every policy evaluation is recorded — what matched, what was allowed or denied
+    - Admins can trace why Hector did or did not take an action back to policy
+    open_questions: []
+    children: []
+  - slug: audit.approval_trail
+    title: Approval Trail
+    description: Every approval and rejection is recorded
+    status: idea
+    priority: P1
+    stories:
+    - Approvals and rejections are logged with who approved, when, and what was approved
+    - The approval trail is linked to the action that followed
+    open_questions: []
+    children: []
 - slug: observability
   title: Observability
   description: Internal developer tooling — traces and metrics for debugging and tuning
@@ -455,76 +479,77 @@
   priority: P1
   open_questions: []
   children:
-    - slug: observability.traces
-      title: Traces
-      description: OpenTelemetry traces across all agent operations
-      status: idea
-      priority: P1
-      stories:
-        - All agent operations emit OpenTelemetry traces
-        - Developers can trace exactly what happened inside a Hector session
-      open_questions: []
-      children: []
-    - slug: observability.metrics
-      title: Metrics
-      description: Key performance and quality metrics for tuning
-      status: idea
-      priority: P1
-      stories:
-        - Key metrics are available for latency, token usage, and tool call rates
-        - Metrics feed into tuning and alerting workflows
-      open_questions: []
-      children: []
-
+  - slug: observability.traces
+    title: Traces
+    description: OpenTelemetry traces across all agent operations
+    status: idea
+    priority: P1
+    stories:
+    - All agent operations emit OpenTelemetry traces
+    - Developers can trace exactly what happened inside a Hector session
+    open_questions: []
+    children: []
+  - slug: observability.metrics
+    title: Metrics
+    description: Key performance and quality metrics for tuning
+    status: idea
+    priority: P1
+    stories:
+    - Key metrics are available for latency, token usage, and tool call rates
+    - Metrics feed into tuning and alerting workflows
+    open_questions: []
+    children: []
 - slug: workflows
   title: Workflows
-  description: Infrastructure for defining, running, and monitoring composable agent workflows
+  description: Infrastructure for defining, running, and monitoring composable agent
+    workflows
   status: open
   priority: P1
   open_questions: []
   children:
-    - slug: workflows.definition
-      title: Workflow Definition
-      description: Workflows are defined as DOT graphs mixing deterministic and agentic steps
-      status: idea
-      priority: P1
-      stories:
-        - Workflows are defined as DOT graphs and can be visualized in GitHub
-        - A workflow mixes deterministic steps with agentic steps in a single definition
-        - Workflow definitions are version-controlled alongside code
-      open_questions: []
-      children: []
-    - slug: workflows.execution
-      title: Workflow Execution
-      description: Hector executes workflow steps in order, handling both deterministic and agentic nodes
-      status: idea
-      priority: P1
-      stories:
-        - Hector runs deterministic steps reliably without relying on the model
-        - Hector spawns agents or subagents at agentic nodes in the graph
-      open_questions: []
-      children: []
-    - slug: workflows.monitoring
-      title: Workflow Monitoring
-      description: Running and past workflows are visible and inspectable
-      status: idea
-      priority: P1
-      stories:
-        - Users can see which workflows are running and their current state
-        - Past workflow runs are inspectable step by step
-      open_questions: []
-      children: []
-    - slug: workflows.user_defined
-      title: User-Defined Workflows
-      description: Customers can define and deploy their own workflows
-      status: idea
-      priority: P2
-      stories:
-        - Customers can write and deploy their own workflow definitions
-        - Hector validates user-defined workflows before running them
-      open_questions: []
-      children: []
-
+  - slug: workflows.definition
+    title: Workflow Definition
+    description: Workflows are defined as DOT graphs mixing deterministic and agentic
+      steps
+    status: idea
+    priority: P1
+    stories:
+    - Workflows are defined as DOT graphs and can be visualized in GitHub
+    - A workflow mixes deterministic steps with agentic steps in a single definition
+    - Workflow definitions are version-controlled alongside code
+    open_questions: []
+    children: []
+  - slug: workflows.execution
+    title: Workflow Execution
+    description: Hector executes workflow steps in order, handling both deterministic
+      and agentic nodes
+    status: idea
+    priority: P1
+    stories:
+    - Hector runs deterministic steps reliably without relying on the model
+    - Hector spawns agents or subagents at agentic nodes in the graph
+    open_questions: []
+    children: []
+  - slug: workflows.monitoring
+    title: Workflow Monitoring
+    description: Running and past workflows are visible and inspectable
+    status: idea
+    priority: P1
+    stories:
+    - Users can see which workflows are running and their current state
+    - Past workflow runs are inspectable step by step
+    open_questions: []
+    children: []
+  - slug: workflows.user_defined
+    title: User-Defined Workflows
+    description: Customers can define and deploy their own workflows
+    status: idea
+    priority: P2
+    stories:
+    - Customers can write and deploy their own workflow definitions
+    - Hector validates user-defined workflows before running them
+    open_questions: []
+    children: []
 - slug: skills
   title: Skills
   description: How Hector discovers, reasons about, and uses external capabilities
@@ -532,37 +557,37 @@
   priority: P1
   open_questions: []
   children:
-    - slug: skills.discovery
-      title: Skill Discovery
-      description: Hector knows what skills exist and understands their formats
-      status: idea
-      priority: P1
-      stories:
-        - Hector is aware of available skills and their capabilities without loading them
-        - Hector understands skills in various formats
-      open_questions: []
-      children: []
-    - slug: skills.relevance
-      title: Skill Relevance Reasoning
-      description: Hector decides whether a skill is relevant before considering it — never auto-loads
-      status: idea
-      priority: P1
-      stories:
-        - Hector reasons about whether a skill is relevant to the current context
-        - Hector never auto-loads a skill unprompted
-      open_questions: []
-      children: []
-    - slug: skills.explicit_use
-      title: Explicit Skill Use
-      description: When instructed to use a skill, Hector applies it directly
-      status: idea
-      priority: P1
-      stories:
-        - When a user instructs Hector to use a skill, it applies it without hesitation
-        - Explicit instruction overrides Hector's own relevance judgment
-      open_questions: []
-      children: []
-
+  - slug: skills.discovery
+    title: Skill Discovery
+    description: Hector knows what skills exist and understands their formats
+    status: idea
+    priority: P1
+    stories:
+    - Hector is aware of available skills and their capabilities without loading them
+    - Hector understands skills in various formats
+    open_questions: []
+    children: []
+  - slug: skills.relevance
+    title: Skill Relevance Reasoning
+    description: Hector decides whether a skill is relevant before considering it
+      — never auto-loads
+    status: idea
+    priority: P1
+    stories:
+    - Hector reasons about whether a skill is relevant to the current context
+    - Hector never auto-loads a skill unprompted
+    open_questions: []
+    children: []
+  - slug: skills.explicit_use
+    title: Explicit Skill Use
+    description: When instructed to use a skill, Hector applies it directly
+    status: idea
+    priority: P1
+    stories:
+    - When a user instructs Hector to use a skill, it applies it without hesitation
+    - Explicit instruction overrides Hector's own relevance judgment
+    open_questions: []
+    children: []
 - slug: coding
   title: Coding
   description: Safe, sandboxed code execution and code understanding capabilities
@@ -570,43 +595,72 @@
   priority: P2
   open_questions: []
   children:
-    - slug: coding.sandbox
-      title: Sandbox Environment
-      description: Hector executes code in a safe, isolated environment
-      status: idea
-      priority: P2
-      stories:
-        - Hector runs code in a sandboxed environment that cannot affect the host system
-        - The sandbox is efficient — common operations are native tools, not shell round-trips
-      open_questions: []
-      children: []
-    - slug: coding.safe_shell
-      title: Safe Shell
-      description: Shell commands are validated before execution by an auditor model
-      status: idea
-      priority: P2
-      stories:
-        - Every shell command is reviewed by a small auditor model before it runs
-        - The auditor flags destructive commands, secret extraction attempts, and other risks
-      open_questions: []
-      children: []
-    - slug: coding.indexing
-      title: Code Indexing
-      description: Hector indexes codebases semantically for efficient querying
-      status: idea
-      priority: P2
-      stories:
-        - Hector indexes codebases for semantic querying — not grep or find
-        - Hector can find relevant code by meaning, not just text match
-      open_questions: []
-      children: []
-    - slug: coding.platform_integration
-      title: Platform Integration
-      description: Hector integrates with existing coding platforms rather than replacing them
-      status: idea
-      priority: P2
-      stories:
-        - Customers can use Claude Code, Cursor, or other platforms alongside Hector
-        - Hector delegates to the customer's preferred coding platform when appropriate
-      open_questions: []
-      children: []
+  - slug: coding.sandbox
+    title: Sandbox Environment
+    description: Hector executes code in a safe, isolated environment
+    status: idea
+    priority: P2
+    stories:
+    - Hector runs code in a sandboxed environment that cannot affect the host system
+    - The sandbox is efficient — common operations are native tools, not shell round-trips
+    open_questions: []
+    children: []
+  - slug: coding.safe_shell
+    title: Safe Shell
+    description: Shell commands are validated before execution by an auditor model
+    status: idea
+    priority: P2
+    stories:
+    - Every shell command is reviewed by a small auditor model before it runs
+    - The auditor flags destructive commands, secret extraction attempts, and other
+      risks
+    open_questions: []
+    children: []
+  - slug: coding.indexing
+    title: Code Indexing
+    description: Hector indexes codebases semantically for efficient querying
+    status: idea
+    priority: P2
+    stories:
+    - Hector indexes codebases for semantic querying — not grep or find
+    - Hector can find relevant code by meaning, not just text match
+    open_questions: []
+    children: []
+  - slug: coding.platform_integration
+    title: Platform Integration
+    description: Hector integrates with existing coding platforms rather than replacing
+      them
+    status: idea
+    priority: P2
+    stories:
+    - Customers can use Claude Code, Cursor, or other platforms alongside Hector
+    - Hector delegates to the customer's preferred coding platform when appropriate
+    open_questions: []
+    children: []
+- slug: web
+  title: Web
+  description: Hector reads and searches the open web to ground responses in current
+    information
+  status: open
+  priority: P1
+  open_questions: []
+  children:
+  - slug: web.fetch
+    title: Web Fetch
+    description: Hector fetches a URL and returns clean, readable content
+    status: idea
+    priority: P1
+    stories:
+    - Hector fetches a URL and returns the main content as markdown
+    - Hector strips navigation, ads, and boilerplate from HTML pages
+    - Hector uses a page-declared markdown alternate when one is available
+    - Hector passes non-HTML text content (markdown, plain text) through unchanged
+    - Hector refuses unsafe targets — private addresses, binary content, oversize
+      responses
+    - Hector reports the final URL after redirects so it can cite accurately
+    - Hector returns typed errors so the model can decide whether to retry, escalate,
+      or give up
+    open_questions:
+    - When article extraction trims too much, should the agent get a raw-fetch escape
+      hatch as a separate web_fetch_raw tool?
+    children: []
