@@ -1,11 +1,9 @@
 package github_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,40 +15,6 @@ import (
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
-
-func TestModuleInitLogsVerificationIssueTitle(t *testing.T) {
-	t.Parallel()
-
-	privateKeyPath := writeTestPrivateKey(t)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/app/installations/456/access_tokens":
-			w.WriteHeader(http.StatusCreated)
-			_, err := fmt.Fprint(w, `{"token":"installation-token","expires_at":"2026-05-22T12:00:00Z"}`)
-			require.NoError(t, err)
-		case "/repos/iamhectordev/hector/issues/1":
-			_, err := fmt.Fprint(w, `{"id":99,"number":1,"title":"Replace me before real use","state":"open","html_url":"https://github.com/replace-owner/replace-repo/issues/1","user":{"login":"alice"}}`)
-			require.NoError(t, err)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	t.Cleanup(server.Close)
-
-	var logs bytes.Buffer
-	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	module, err := hectorgithub.NewModule(hectorgithub.Config{
-		AppID:          123,
-		InstallationID: 456,
-		PrivateKeyPath: privateKeyPath,
-		APIURL:         server.URL,
-	}, hectorgithub.WithLogger(logger))
-	require.NoError(t, err)
-
-	require.NoError(t, module.Init(t.Context()))
-	require.Contains(t, logs.String(), "github integration verified")
-	require.Contains(t, logs.String(), `issue_title="Replace me before real use"`)
-}
 
 func TestConfigConfigured(t *testing.T) {
 	t.Parallel()
@@ -68,9 +32,6 @@ func TestModuleInitRegistersMCPTools(t *testing.T) {
 		case "/app/installations/456/access_tokens":
 			w.WriteHeader(http.StatusCreated)
 			_, err := fmt.Fprint(w, `{"token":"installation-token","expires_at":"2026-05-22T12:00:00Z"}`)
-			require.NoError(t, err)
-		case "/repos/iamhectordev/hector/issues/1":
-			_, err := fmt.Fprint(w, `{"id":99,"number":1,"title":"GitHub MCP wiring","state":"open","html_url":"https://github.com/iamhectordev/hector/issues/1","user":{"login":"alice"}}`)
 			require.NoError(t, err)
 		default:
 			http.NotFound(w, r)
@@ -102,8 +63,19 @@ func TestModuleInitRegistersMCPTools(t *testing.T) {
 	require.NoError(t, module.Init(t.Context()))
 
 	defs := registry.Definitions()
-	require.Len(t, defs, 1)
-	require.Equal(t, "github_repos_list", defs[0].Name)
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		names = append(names, def.Name)
+	}
+	require.Equal(t, []string{
+		"create_blocked_by_relationship",
+		"create_milestone",
+		"get_issue",
+		"github_repos_list",
+		"list_milestones",
+		"remove_blocked_by_relationship",
+		"update_milestone",
+	}, names)
 
 	output, err := registry.Run(t.Context(), "github_repos_list", json.RawMessage(`{"owner":"iamhectordev"}`))
 	require.NoError(t, err)

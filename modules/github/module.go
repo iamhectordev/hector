@@ -9,23 +9,13 @@ import (
 	"github.com/iamhectordev/hector/modules/tools"
 )
 
-const (
-	verifyIssueOwner  = "iamhectordev"
-	verifyIssueRepo   = "hector"
-	verifyIssueNumber = 1
-)
-
-type issueReader interface {
-	GetIssue(context.Context, Repository, int) (Issue, error)
-}
-
 type toolRegistrar interface {
 	Register(tools.Tool) error
 }
 
 // Module verifies the GitHub integration during application startup.
 type Module struct {
-	client    issueReader
+	client    *Client
 	tokens    TokenProvider
 	mcpConfig MCPConfig
 	mcpClient *mcp.Client
@@ -78,18 +68,10 @@ func (m *Module) Name() string {
 }
 
 func (m *Module) Init(ctx context.Context) error {
-	repo := Repository{Owner: verifyIssueOwner, Name: verifyIssueRepo}
-	issue, err := m.client.GetIssue(ctx, repo, verifyIssueNumber)
-	if err != nil {
-		return fmt.Errorf("github: verify issue read: %w", err)
-	}
-	m.logger.InfoContext(ctx, "github integration verified",
-		"owner", repo.Owner,
-		"repo", repo.Name,
-		"issue_number", issue.Number,
-		"issue_title", issue.Title,
-	)
 	if err := m.initMCP(ctx); err != nil {
+		return err
+	}
+	if err := m.registerTools(); err != nil {
 		return err
 	}
 	return nil
@@ -140,5 +122,21 @@ func (m *Module) initMCP(ctx context.Context) error {
 		}
 	}
 	m.logger.InfoContext(ctx, "github mcp tools registered", "count", len(discovered))
+	return nil
+}
+
+func (m *Module) registerTools() error {
+	if m.tools == nil {
+		return nil
+	}
+	githubTools, err := NewTools(m.client)
+	if err != nil {
+		return err
+	}
+	for _, tool := range githubTools {
+		if err := m.tools.Register(tool); err != nil {
+			return err
+		}
+	}
 	return nil
 }
