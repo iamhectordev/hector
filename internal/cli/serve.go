@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
@@ -10,6 +11,7 @@ import (
 	"github.com/iamhectordev/hector/modules/github"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/modules/tools/web"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
 	sessionsqlite "github.com/iamhectordev/hector/pkg/session/sqlite"
@@ -78,7 +80,11 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow)
+	webFetch, err := web.NewFetch(http.DefaultClient)
+	if err != nil {
+		return err
+	}
+	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow, webFetch)
 	if err != nil {
 		return err
 	}
