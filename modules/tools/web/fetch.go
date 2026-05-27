@@ -1,10 +1,12 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"net/http"
 	"strings"
@@ -13,6 +15,7 @@ import (
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
 
 	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/safehttp"
 )
 
 type fetchInput struct {
@@ -64,7 +67,7 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 
 	resp, err := f.http.Do(req)
 	if err != nil {
-		return tools.Fail("fetch_failed: " + err.Error())
+		return tools.Fail(classifyRequestErr(err))
 	}
 	if resp == nil {
 		return tools.Fail("fetch_failed: no response")
@@ -80,7 +83,15 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		return tools.Fail("blocked_content_type: " + mediaType)
 	}
 
-	article, err := readability.FromReader(resp.Body, resp.Request.URL)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if errors.Is(err, safehttp.ErrOversize) {
+			return tools.Fail("oversize: response body exceeds limit")
+		}
+		return tools.Fail("fetch_failed: " + err.Error())
+	}
+
+	article, err := readability.FromReader(bytes.NewReader(body), resp.Request.URL)
 	if err != nil {
 		return tools.Fail("extraction_failed: " + err.Error())
 	}
@@ -100,4 +111,26 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		ContentType: "markdown",
 		Content:     md,
 	})
+}
+
+// classifyRequestErr maps safehttp sentinel errors to structured error codes.
+func classifyRequestErr(err error) string {
+	switch {
+	case errors.Is(err, safehttp.ErrBlockedScheme):
+		return "blocked_scheme: " + err.Error()
+	case errors.Is(err, safehttp.ErrBlockedAddress):
+		return "blocked_address: " + err.Error()
+	case isTimeout(err):
+		return "timeout: request timed out"
+	default:
+		return "fetch_failed: " + err.Error()
+	}
+}
+
+func isTimeout(err error) bool {
+	var netErr interface{ Timeout() bool }
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+	return errors.Is(err, context.DeadlineExceeded)
 }
