@@ -105,6 +105,42 @@ func TestFetch_HappyPath(t *testing.T) {
 	require.Contains(t, p.Content, "quick brown fox")
 }
 
+func TestFetch_MarkdownPassThrough(t *testing.T) {
+	const content = "# Release notes\n\n- Shipped raw markdown support.\n"
+	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte(content))
+	})
+
+	env := runFetch(t, safeClient(t), srv.URL)
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL, p.URL)
+	require.Equal(t, srv.URL, p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Equal(t, content, p.Content)
+}
+
+func TestFetch_PlainTextPassThrough(t *testing.T) {
+	const content = "plain status report\nline two\n"
+	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte(content))
+	})
+
+	env := runFetch(t, safeClient(t), srv.URL)
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL, p.URL)
+	require.Equal(t, srv.URL, p.FinalURL)
+	require.Equal(t, "text", p.ContentType)
+	require.Equal(t, content, p.Content)
+}
+
 func TestFetch_Redirect(t *testing.T) {
 	var articleURL string
 	mux := http.NewServeMux()
@@ -203,6 +239,20 @@ func TestFetch_Oversize(t *testing.T) {
 	const limit = 1024
 	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
+		_, _ = io.Copy(w, io.LimitReader(strings.NewReader(strings.Repeat("x", limit+1)), limit+1))
+	})
+
+	client := safeClient(t, safehttp.WithMaxBodyBytes(limit))
+	env := runFetch(t, client, srv.URL)
+	require.Equal(t, "error", env.Status)
+	require.True(t, strings.HasPrefix(env.Message, "oversize:"),
+		"got message: %q", env.Message)
+}
+
+func TestFetch_MarkdownPassThroughOversize(t *testing.T) {
+	const limit = 1024
+	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/markdown")
 		_, _ = io.Copy(w, io.LimitReader(strings.NewReader(strings.Repeat("x", limit+1)), limit+1))
 	})
 

@@ -30,6 +30,15 @@ type fetchPayload struct {
 	Content     string `json:"content"`
 }
 
+type contentKind string
+
+const (
+	contentKindHTML     contentKind = "html"
+	contentKindMarkdown contentKind = "markdown"
+	contentKindText     contentKind = "text"
+	contentKindBlocked  contentKind = "blocked"
+)
+
 type Fetch struct {
 	http   *http.Client
 	schema json.RawMessage
@@ -49,7 +58,7 @@ func NewFetch(client *http.Client) (*Fetch, error) {
 func (f *Fetch) Definition() tools.Definition {
 	return tools.Definition{
 		Name:        "web_fetch",
-		Description: "Fetches a web page and returns the readable article as markdown. Use for articles, blog posts, and documentation pages. Returns the page title, the final URL after redirects, and the extracted content. Returns an error if the page is not HTML or no article can be extracted.",
+		Description: "Fetches a web page or text document. Returns readable HTML as markdown, raw markdown as markdown, and plain text as text. Returns the final URL after redirects.",
 		Parameters:  f.schema,
 	}
 }
@@ -79,7 +88,8 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	}
 
 	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if mediaType != "text/html" && mediaType != "application/xhtml+xml" {
+	kind := classifyContent(mediaType)
+	if kind == contentKindBlocked {
 		return tools.Fail("blocked_content_type: " + mediaType)
 	}
 
@@ -89,6 +99,24 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 			return tools.Fail("oversize: response body exceeds limit")
 		}
 		return tools.Fail("fetch_failed: " + err.Error())
+	}
+
+	if kind == contentKindMarkdown {
+		return tools.OK(fetchPayload{
+			URL:         in.URL,
+			FinalURL:    resp.Request.URL.String(),
+			ContentType: "markdown",
+			Content:     string(body),
+		})
+	}
+
+	if kind == contentKindText {
+		return tools.OK(fetchPayload{
+			URL:         in.URL,
+			FinalURL:    resp.Request.URL.String(),
+			ContentType: "text",
+			Content:     string(body),
+		})
 	}
 
 	article, err := readability.FromReader(bytes.NewReader(body), resp.Request.URL)
@@ -111,6 +139,19 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		ContentType: "markdown",
 		Content:     md,
 	})
+}
+
+func classifyContent(mediaType string) contentKind {
+	switch mediaType {
+	case "text/html", "application/xhtml+xml":
+		return contentKindHTML
+	case "text/markdown":
+		return contentKindMarkdown
+	case "text/plain":
+		return contentKindText
+	default:
+		return contentKindBlocked
+	}
 }
 
 // classifyRequestErr maps safehttp sentinel errors to structured error codes.
