@@ -2,6 +2,9 @@ package cli_test
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"testing"
 	"time"
@@ -19,6 +22,14 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 
 	// 1. Setup Slack Mock
 	srv := slackmock.New(t)
+	var tavilyAuth string
+	tavily := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/usage", r.URL.Path)
+		tavilyAuth = r.Header.Get("Authorization")
+		_, err := fmt.Fprint(w, `{"total_credits_used":1}`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(tavily.Close)
 
 	// 2. Configure Environment variables mimicking the executable
 	dbPath := filepath.Join(t.TempDir(), "integration.db")
@@ -33,6 +44,9 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	t.Setenv("SLACK_BOT_TOKEN", "xoxb-fake")
 	t.Setenv("SLACK_APP_TOKEN", "xapp-fake")
 	t.Setenv("SLACK_BOT_TOKEN", "xoxb-fake")
+	t.Setenv("WEB_SEARCH_PROVIDER", "tavily")
+	t.Setenv("TAVILY_API_KEY", "test-tavily-key")
+	t.Setenv("TAVILY_API_URL", tavily.URL)
 
 	// 3. Init klee app
 	app := klee.New[cli.Config]("hector", "test", cli.Commands())
@@ -108,4 +122,5 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for app to exit")
 	}
+	require.Equal(t, "Bearer test-tavily-key", tavilyAuth)
 }

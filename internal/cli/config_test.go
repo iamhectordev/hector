@@ -20,5 +20,5 @@ func TestConfigComposesWebSearchConfig(t *testing.T) {
 		},
 	}
 
-	require.True(t, cfg.WebSearch.Configured())
+	require.True(t, cfg.WebSearch.Enabled())
 }

@@ -9,6 +9,6 @@ type Config struct {
 	Tavily   TavilyConfig `yaml:"tavily"`
 }
 
-func (c Config) Configured() bool {
-	return c.Provider != "" || c.Tavily.Configured()
+func (c Config) Enabled() bool {
+	return c.Provider != ""
 }

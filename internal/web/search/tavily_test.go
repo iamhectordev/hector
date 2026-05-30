@@ -10,13 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfigConfigured(t *testing.T) {
+func TestConfigEnabled(t *testing.T) {
 	t.Parallel()
 
-	require.False(t, search.Config{}.Configured())
-	require.True(t, search.Config{Provider: search.ProviderTavily}.Configured())
-	require.True(t, search.Config{Tavily: search.TavilyConfig{APIKey: "test-key"}}.Configured())
-	require.True(t, search.Config{Tavily: search.TavilyConfig{APIURL: "https://example.com"}}.Configured())
+	require.False(t, search.Config{}.Enabled())
+	require.True(t, search.Config{Provider: search.ProviderTavily}.Enabled())
+	require.False(t, search.Config{Tavily: search.TavilyConfig{APIKey: "test-key"}}.Enabled())
+	require.False(t, search.Config{Tavily: search.TavilyConfig{APIURL: "https://example.com"}}.Enabled())
 }
 
 func TestNewTavilyValidatesConfig(t *testing.T) {

@@ -19,10 +19,6 @@ type TavilyConfig struct {
 	APIURL string `yaml:"api_url" env:"TAVILY_API_URL" validate:"omitempty,url"`
 }
 
-func (c TavilyConfig) Configured() bool {
-	return c.APIKey != "" || c.APIURL != ""
-}
-
 type Tavily struct {
 	apiURL     string
 	apiKey     string

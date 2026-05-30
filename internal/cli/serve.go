@@ -6,6 +6,7 @@ import (
 
 	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
+	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/github"
 	"github.com/iamhectordev/hector/modules/slack"
@@ -39,6 +40,9 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	}
 	completer, err := llm.New(cfg.LLM)
 	if err != nil {
+		return err
+	}
+	if err := verifyWebSearch(ctx, cfg.WebSearch); err != nil {
 		return err
 	}
 
@@ -141,4 +145,20 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 		"signal", rep.Signal,
 	)
 	return rep.Err()
+}
+
+func verifyWebSearch(ctx context.Context, cfg search.Config) error {
+	if !cfg.Enabled() {
+		return nil
+	}
+	switch cfg.Provider {
+	case search.ProviderTavily:
+		client, err := search.NewTavily(cfg.Tavily)
+		if err != nil {
+			return err
+		}
+		return client.Verify(ctx)
+	default:
+		return fmt.Errorf("web_search: unsupported provider %q", cfg.Provider)
+	}
 }
