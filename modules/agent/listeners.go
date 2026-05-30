@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/xml"
+	"time"
 
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
@@ -26,10 +27,17 @@ type TUIContext struct {
 type UserMessage struct {
 	SenderID   string            `xml:"sender_id,attr,omitempty"`
 	SenderName string            `xml:"sender_name,attr,omitempty"`
+	TS         string            `xml:"ts,attr,omitempty"`
+	UpdatedAt  string            `xml:"updated_at,attr,omitempty"`
 	Text       string            `xml:"text"`
 	Reactions  *MessageReactions `xml:"reactions,omitempty"`
 	Files      []MessageFile     `xml:"file,omitempty"`
 	Images     []MessageImage    `xml:"img,omitempty"`
+	Forwards   []MessageForward  `xml:"fwd,omitempty"`
+}
+
+type MessageForward struct {
+	Message UserMessage `xml:"msg"`
 }
 
 type MessageReactions struct {
@@ -123,16 +131,27 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 
 func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 	data := e.Data()
-	sourceURI := slack.NewOriginURI(data.Channel.ID, data.ThreadTS)
+	msgCtx := newUserMessage(data.Sender, data.Text, data.Reactions, data.Files, data.Images, data.Forwards)
+	return m.processSlackMessage(ctx, e.ID(), e.Type(), "slack message", data.Channel, data.ThreadTS, msgCtx, data.Text, data.Images)
+}
+
+func (m *Module) onSlackMessageUpdated(ctx context.Context, e waffle.Event[slack.MessageUpdatedData]) error {
+	data := e.Data()
+	msgCtx := newUserMessage(data.Sender, data.Text, data.Reactions, data.Files, data.Images, data.Forwards)
+	msgCtx.UpdatedAt = data.UpdatedAt.Format(time.RFC3339)
+	return m.processSlackMessage(ctx, e.ID(), e.Type(), "slack message update", data.Channel, data.ThreadTS, msgCtx, data.Text, data.Images)
+}
+
+func (m *Module) processSlackMessage(ctx context.Context, eventID, eventType, logLabel string, channel slack.Channel, threadTS string, msgCtx UserMessage, text string, images []slack.ImageAttachment) error {
+	sourceURI := slack.NewOriginURI(channel.ID, threadTS)
 	ctx = session.With(ctx, session.Session{SourceURI: sourceURI})
-	text := data.Text
 
 	slackCtx := SlackContext{
 		Platform:    "slack",
-		ChannelType: string(data.Channel.Type),
-		ChannelID:   data.Channel.ID,
-		ChannelName: data.Channel.Name,
-		ThreadTS:    data.ThreadTS,
+		ChannelType: string(channel.Type),
+		ChannelID:   channel.ID,
+		ChannelName: channel.Name,
+		ThreadTS:    threadTS,
 	}
 
 	system, err := NewPrompt(
@@ -143,14 +162,6 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		return err
 	}
 
-	msgCtx := UserMessage{
-		SenderID:   data.Sender.ID,
-		SenderName: data.Sender.Name,
-		Text:       data.Text,
-		Reactions:  slackReactionsXML(data.Reactions),
-		Files:      slackFilesXML(data.Files),
-		Images:     slackImagesXML(data.Images),
-	}
 	content, err := NewPrompt(
 		NewXMLPart("msg", msgCtx),
 	).Render()
@@ -163,9 +174,9 @@ func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.Messag
 		return err
 	}
 
-	if err := m.handle(ctx, agentCtx, system, slackUserMessages(content, data.Images)); err != nil {
-		m.log(ctx).ErrorContext(ctx, "agent failed to process slack message",
-			"event_id", e.ID(), "event_type", e.Type(), "text_len", len(text), "err", err)
+	if err := m.handle(ctx, agentCtx, system, slackUserMessages(content, images)); err != nil {
+		m.log(ctx).ErrorContext(ctx, "agent failed to process "+logLabel,
+			"event_id", eventID, "event_type", eventType, "text_len", len(text), "err", err)
 		return err
 	}
 	return nil
@@ -179,6 +190,31 @@ func slackUserMessages(content string, images []slack.ImageAttachment) []*schema
 	return []*schema.Message{schema.UserMessageWithParts(content, parts)}
 }
 
+func newUserMessage(sender slack.Sender, text string, reactions slack.Reactions, files []slack.FileAttachment, images []slack.ImageAttachment, forwards []slack.MessageReceivedData) UserMessage {
+	fwd := make([]MessageForward, 0, len(forwards))
+	for _, f := range forwards {
+		fwd = append(fwd, MessageForward{
+			Message: UserMessage{
+				SenderID:   f.Sender.ID,
+				SenderName: f.Sender.Name,
+				TS:         f.TS,
+				Text:       f.Text,
+				Reactions:  slackReactionsXML(f.Reactions),
+				Files:      slackFilesXML(f.Files),
+				Images:     slackImagesXML(f.Images),
+			},
+		})
+	}
+	return UserMessage{
+		SenderID:   sender.ID,
+		SenderName: sender.Name,
+		Text:       text,
+		Reactions:  slackReactionsXML(reactions),
+		Files:      slackFilesXML(files),
+		Images:     slackImagesXML(images),
+		Forwards:   fwd,
+	}
+}
 func slackImageParts(content string, images []slack.ImageAttachment) []schema.MessagePart {
 	var parts []schema.MessagePart
 	for _, image := range images {

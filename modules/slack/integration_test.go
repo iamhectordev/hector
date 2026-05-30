@@ -2,8 +2,11 @@ package slack_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
+
+	slackgo "github.com/slack-go/slack"
 
 	module "github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/slackmock"
@@ -360,6 +363,119 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 		require.Equal(t, module.ChannelType("bizarre_type"), data.Channel.Type)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
+	}
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
+	t.Parallel()
+
+	srv := slackmock.New(t)
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, bus.Shutdown(context.Background()))
+	})
+
+	got := make(chan module.MessageUpdatedData, 1)
+	err = waffle.On(bus, module.MessageUpdated).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageUpdatedData]) error {
+		got <- e.Data()
+		return nil
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		m, err := module.NewModule(bus, module.Config{
+			AppToken: "xapp-fake-token",
+			BotToken: "xoxb-fake-token",
+			APIURL:   srv.BaseURL() + "/api/",
+		})
+		if err != nil {
+			done <- err
+			return
+		}
+		if err := m.Init(ctx); err != nil {
+			done <- err
+			return
+		}
+		if err := bus.Start(ctx); err != nil {
+			done <- err
+			return
+		}
+		done <- m.Start(ctx)
+	}()
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Alice", "real_name": "Alice"},
+		},
+	})
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U999",
+			"profile": map[string]any{"display_name": "Bob", "real_name": "Bob"},
+		},
+	})
+	srv.ExpectWithResponse("conversations.info", map[string]any{
+		"ok": true,
+		"channel": map[string]any{
+			"id":   "C999",
+			"name": "general",
+		},
+	})
+	srv.ExpectWithResponse("conversations.info", map[string]any{
+		"ok": true,
+		"channel": map[string]any{
+			"id":   "D024BE91L",
+			"name": "dm-channel",
+		},
+	})
+
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		SubType:     "message_changed",
+		Channel:     "D024BE91L",
+		TimeStamp:   "1355517523.000005",
+		ChannelType: slackevents.ChannelTypeIM,
+		Message: &slackgo.Msg{
+			User:      "U222",
+			Text:      "hello from dm",
+			Timestamp: "1355517523.000005",
+			Attachments: []slackgo.Attachment{
+				{
+					AuthorID:   "U999",
+					AuthorName: "Bob",
+					Ts:         json.Number("1355517522.000001"),
+					Text:       "Original message",
+					FromURL:    "https://hector.slack.com/archives/C999/p1355517522000001",
+				},
+			},
+		},
+	}))
+
+	select {
+	case data := <-got:
+		require.Equal(t, "D024BE91L", data.Channel.ID)
+		require.Equal(t, "U222", data.Sender.ID)
+		require.Equal(t, "Alice", data.Sender.Name)
+		require.Equal(t, "hello from dm", data.Text)
+		require.Len(t, data.Forwards, 1)
+		require.Equal(t, "U999", data.Forwards[0].Sender.ID)
+		require.Equal(t, "Bob", data.Forwards[0].Sender.Name)
+		require.Equal(t, "Original message", data.Forwards[0].Text)
+		require.Equal(t, "C999", data.Forwards[0].Channel.ID)
+		require.Equal(t, module.ChannelTypeDM, data.Channel.Type)
+		require.NotZero(t, data.UpdatedAt)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for slack message_updated event")
 	}
 
 	cancel()

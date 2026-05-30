@@ -7,6 +7,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestXMLPart_RenderForward(t *testing.T) {
+	t.Parallel()
+
+	fwd := agent.MessageForward{
+		Message: agent.UserMessage{
+			SenderID:   "U789",
+			SenderName: "Bob",
+			TS:         "1747123400.000050",
+			Text:       "Original message",
+		},
+	}
+	got, err := agent.NewXMLPart("fwd", fwd).Render()
+	require.NoError(t, err)
+
+	want := `<fwd>
+  <msg sender_id="U789" sender_name="Bob" ts="1747123400.000050">
+    <text>Original message</text>
+  </msg>
+</fwd>`
+	require.Equal(t, want, got)
+}
+
 func TestPrompt_Render(t *testing.T) {
 	t.Parallel()
 

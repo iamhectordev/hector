@@ -70,6 +70,10 @@ func (m *Module) Init(ctx context.Context) error {
 		m.log(ctx).ErrorContext(ctx, "failed to register slack listener", "err", err)
 		return err
 	}
+	if err := waffle.On(m.bus, slack.MessageUpdated).Handle("agent.slack.update", m.onSlackMessageUpdated); err != nil {
+		m.log(ctx).ErrorContext(ctx, "failed to register slack update listener", "err", err)
+		return err
+	}
 	m.log(ctx).InfoContext(ctx, "agent listeners registered")
 	return nil
 }

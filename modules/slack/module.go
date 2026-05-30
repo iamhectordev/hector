@@ -11,29 +11,53 @@ import (
 	"github.com/slack-go/slack/socketmode"
 )
 
-// Module connects to Slack Socket Mode and publishes direct messages on the bus.
-type Module struct {
-	bus       *waffle.EventBus
-	appToken  string
-	botToken  string
-	apiURL    string
-	logger    *slog.Logger
-	api       *slackgo.Client
-	client    *socketmode.Client
-	botUserID string
+// ModuleOption configures [NewModule].
+type ModuleOption func(*Module)
+
+// WithEventLogger sets the event logger for raw Slack events.
+func WithEventLogger(logger EventLogger) ModuleOption {
+	return func(m *Module) {
+		m.eventLogger = logger
+	}
 }
 
-func NewModule(bus *waffle.EventBus, cfg Config) (*Module, error) {
+// Module connects to Slack Socket Mode and publishes direct messages on the bus.
+type Module struct {
+	bus         *waffle.EventBus
+	appToken    string
+	botToken    string
+	apiURL      string
+	logger      *slog.Logger
+	api         *slackgo.Client
+	client      *socketmode.Client
+	botUserID   string
+	eventLogger EventLogger
+}
+
+func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module, error) {
 	if err := validate.Struct(cfg); err != nil {
 		return nil, fmt.Errorf("slack: invalid config: %w", err)
 	}
-	return &Module{
-		bus:      bus,
-		appToken: cfg.AppToken,
-		botToken: cfg.BotToken,
-		apiURL:   cfg.APIURL,
-		logger:   slog.Default().With("component", "module", "module", "slack"),
-	}, nil
+	var eventLogger EventLogger = discardLogger{}
+	if cfg.EventLog.Enabled {
+		var err error
+		eventLogger, err = NewFileEventLogger(cfg.EventLog)
+		if err != nil {
+			return nil, err
+		}
+	}
+	m := &Module{
+		bus:         bus,
+		appToken:    cfg.AppToken,
+		botToken:    cfg.BotToken,
+		apiURL:      cfg.APIURL,
+		logger:      slog.Default().With("component", "module", "module", "slack"),
+		eventLogger: eventLogger,
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m, nil
 }
 
 func (m *Module) Name() string {
@@ -65,7 +89,7 @@ func (m *Module) Start(ctx context.Context) error {
 }
 
 func (m *Module) Stop(context.Context) error {
-	return nil
+	return m.eventLogger.Close()
 }
 
 func (m *Module) run(ctx context.Context, client *socketmode.Client) error {
@@ -112,6 +136,9 @@ func (m *Module) eventLoop(ctx context.Context, client *socketmode.Client) error
 					return ctx.Err()
 				}
 				return fmt.Errorf("slack: events channel closed")
+			}
+			if err := m.eventLogger.Log(ctx, evt); err != nil {
+				m.log(ctx).WarnContext(ctx, "slack event log failed", "err", err)
 			}
 			if err := m.handleSocketEvent(ctx, client, evt); err != nil {
 				return err

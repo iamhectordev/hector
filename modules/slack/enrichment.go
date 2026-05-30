@@ -25,17 +25,32 @@ type messageEnricher struct {
 
 func (e messageEnricher) Enrich(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
 	p := pool.New()
-	p.Go(func() { e.enrichSender(ctx, data, event) })
-	p.Go(func() { e.enrichChannel(ctx, data, event) })
-	p.Go(func() { e.enrichReactions(ctx, data, event) })
+	p.Go(func() { e.enrichSender(ctx, data) })
+	p.Go(func() { e.enrichChannel(ctx, data) })
+	p.Go(func() { e.enrichReactions(ctx, data) })
 	p.Go(func() { e.enrichFiles(ctx, data, event) })
+	p.Wait()
+
+	for i := range data.Forwards {
+		e.enrichForward(ctx, &data.Forwards[i])
+	}
+}
+
+func (e messageEnricher) enrichForward(ctx context.Context, data *MessageReceivedData) {
+	p := pool.New()
+	p.Go(func() { e.enrichSender(ctx, data) })
+	p.Go(func() { e.enrichChannel(ctx, data) })
+	p.Go(func() { e.enrichReactions(ctx, data) })
 	p.Wait()
 }
 
-func (e messageEnricher) enrichSender(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
-	user, err := e.api.GetUserInfoContext(ctx, event.User)
+func (e messageEnricher) enrichSender(ctx context.Context, data *MessageReceivedData) {
+	if data.Sender.ID == "" {
+		return
+	}
+	user, err := e.api.GetUserInfoContext(ctx, data.Sender.ID)
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get user info", "err", err, "user", event.User)
+		e.log(ctx).WarnContext(ctx, "failed to get user info", "err", err, "user", data.Sender.ID)
 		return
 	}
 	name := user.Profile.DisplayName
@@ -45,28 +60,34 @@ func (e messageEnricher) enrichSender(ctx context.Context, data *MessageReceived
 	data.Sender.Name = name
 }
 
-func (e messageEnricher) enrichChannel(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
+func (e messageEnricher) enrichChannel(ctx context.Context, data *MessageReceivedData) {
+	if data.Channel.ID == "" {
+		return
+	}
 	channel, err := e.api.GetConversationInfoContext(ctx, &slackgo.GetConversationInfoInput{
-		ChannelID:         event.Channel,
+		ChannelID:         data.Channel.ID,
 		IncludeLocale:     false,
 		IncludeNumMembers: true,
 	})
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get conversation info", "err", err, "channel", event.Channel)
+		e.log(ctx).WarnContext(ctx, "failed to get conversation info", "err", err, "channel", data.Channel.ID)
 		return
 	}
 	data.Channel.Name = channel.Name
 	data.Channel.MemberCount = channel.NumMembers
 }
 
-func (e messageEnricher) enrichReactions(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
+func (e messageEnricher) enrichReactions(ctx context.Context, data *MessageReceivedData) {
+	if data.Channel.ID == "" || data.TS == "" {
+		return
+	}
 	item, err := e.api.GetReactionsContext(
 		ctx,
-		slackgo.NewRefToMessage(event.Channel, event.TimeStamp),
+		slackgo.NewRefToMessage(data.Channel.ID, data.TS),
 		slackgo.GetReactionsParameters{Full: true},
 	)
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get reactions", "err", err, "channel", event.Channel, "ts", event.TimeStamp)
+		e.log(ctx).WarnContext(ctx, "failed to get reactions", "err", err, "channel", data.Channel.ID, "ts", data.TS)
 		data.Reactions.Unavailable = &UnavailableReactions{Reason: err.Error()}
 		return
 	}

@@ -9,6 +9,9 @@ import (
 // MessageReceived is emitted when a Slack direct message is received.
 var MessageReceived = mustDefine[MessageReceivedData]("slack.message_received", 1)
 
+// MessageUpdated is emitted when a message is replaced (message_changed).
+var MessageUpdated = mustDefine[MessageUpdatedData]("slack.message_updated", 1)
+
 // ChannelType identifies the type of a Slack conversation.
 type ChannelType string
 
@@ -87,14 +90,32 @@ const (
 // MessageReceivedData is the payload for [MessageReceived].
 type MessageReceivedData struct {
 	Channel    Channel
-	ThreadTS   string // Empty when not in a thread
+	ThreadTS   string // Thread root's ts when replying in a thread; set to message's own ts for top-level messages.
+	TS         string // Raw Slack timestamp from the event or forwarded-attachment Ts.
 	Sender     Sender
 	Text       string
 	Reactions  Reactions
 	Files      []FileAttachment
 	Images     []ImageAttachment
+	Forwards   []MessageReceivedData
 	SentAt     time.Time
 	ReceivedAt time.Time
+}
+
+// MessageUpdatedData is the payload for [MessageUpdated].
+type MessageUpdatedData struct {
+	Channel    Channel
+	ThreadTS   string
+	TS         string
+	Sender     Sender
+	Text       string
+	Reactions  Reactions
+	Files      []FileAttachment
+	Images     []ImageAttachment
+	Forwards   []MessageReceivedData
+	SentAt     time.Time
+	ReceivedAt time.Time
+	UpdatedAt  time.Time
 }
 
 func mustDefine[T any](eventType string, schemaVersion int) waffle.Definition[T] {

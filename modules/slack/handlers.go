@@ -65,6 +65,11 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 
 func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent) error {
 	m.log(ctx).DebugContext(ctx, "slack message event", "user", e.User, "channel", e.Channel, "subtype", e.SubType, "thread_ts", e.ThreadTimeStamp, "ts", e.TimeStamp)
+
+	if e.SubType == "message_changed" {
+		return m.handleMessageChanged(ctx, e)
+	}
+
 	if e.User == m.botUserID {
 		m.log(ctx).DebugContext(ctx, "slack message ignored: bot self-message", "user", e.User)
 		return nil
@@ -85,6 +90,41 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
 	if err := m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)
+	}
+	return nil
+}
+
+func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.MessageEvent) error {
+	data, ok, err := messageChangedData(time.Now().UTC(), e)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+
+	m.enricher().Enrich(ctx, &data, e)
+
+	data.Channel.Type = channelTypeFromSlack(e.ChannelType)
+
+	updatedData := MessageUpdatedData{
+		Channel:    data.Channel,
+		ThreadTS:   data.ThreadTS,
+		TS:         data.TS,
+		Sender:     data.Sender,
+		Text:       data.Text,
+		Reactions:  data.Reactions,
+		Files:      data.Files,
+		Images:     data.Images,
+		Forwards:   data.Forwards,
+		SentAt:     data.SentAt,
+		ReceivedAt: data.ReceivedAt,
+		UpdatedAt:  time.Now().UTC(),
+	}
+
+	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(updatedData.Channel.ID, updatedData.ThreadTS)})
+	if err := m.bus.Record(ctx, MessageUpdated.New(updatedData)); err != nil {
+		return fmt.Errorf("failed to record message updated: %w", err)
 	}
 	return nil
 }
