@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,18 @@ const articleHTML = `<!doctype html>
 </article>
 <footer>footer</footer>
 </body></html>`
+
+func articleHTMLWithHead(extraHead string) string {
+	return `<!doctype html>
+<html><head>
+<title>The Quick Brown Fox</title>` + extraHead + `
+</head><body><article>
+<h1>The Quick Brown Fox</h1>
+<p>The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.</p>
+<p>Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow.</p>
+<p>Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs.</p>
+</article></body></html>`
+}
 
 type envelope struct {
 	Status  string          `json:"status"`
@@ -103,6 +116,143 @@ func TestFetch_HappyPath(t *testing.T) {
 	require.Equal(t, "The Quick Brown Fox", p.Title)
 	require.Equal(t, "markdown", p.ContentType)
 	require.Contains(t, p.Content, "quick brown fox")
+}
+
+func TestFetch_UsesMarkdownAlternate(t *testing.T) {
+	const alternateContent = "# Alternate article\n\nThis came from markdown.\n"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<!doctype html>
+<html><head>
+<title>HTML Article</title>
+<link rel="alternate" type="text/markdown" href="/article.md">
+</head><body><article><p>This came from HTML.</p></article></body></html>`))
+	})
+	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		_, _ = w.Write([]byte(alternateContent))
+	})
+	srv := newServer(t, mux.ServeHTTP)
+
+	env := runFetch(t, safeClient(t), srv.URL+"/article")
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL+"/article", p.URL)
+	require.Equal(t, srv.URL+"/article.md", p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Equal(t, alternateContent, p.Content)
+}
+
+func TestFetch_UsesApplicationMarkdownAlternateCaseInsensitively(t *testing.T) {
+	const alternateContent = "# Application markdown\n"
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(`<!doctype html>
+<html><head>
+<title>HTML Article</title>
+<link rel="canonical ALTERNATE" type="Application/Markdown" href="/article.md">
+</head><body><article><p>This came from HTML.</p></article></body></html>`))
+	})
+	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "Application/Markdown; charset=utf-8")
+		_, _ = w.Write([]byte(alternateContent))
+	})
+	srv := newServer(t, mux.ServeHTTP)
+
+	env := runFetch(t, safeClient(t), srv.URL+"/article")
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL+"/article.md", p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Equal(t, alternateContent, p.Content)
+}
+
+func TestFetch_FallsBackWhenMarkdownAlternateReturnsHTML(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(articleHTMLWithHead(`
+<link rel="alternate" type="text/markdown" href="/article.md">`)))
+	})
+	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<html><body><p>This is HTML.</p></body></html>"))
+	})
+	srv := newServer(t, mux.ServeHTTP)
+
+	env := runFetch(t, safeClient(t), srv.URL+"/article")
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL+"/article", p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Contains(t, p.Content, "quick brown fox")
+	require.NotContains(t, p.Content, "This is HTML")
+}
+
+func TestFetch_FallsBackWhenMarkdownAlternate404s(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(articleHTMLWithHead(`
+<link rel="alternate" type="text/markdown" href="/missing.md">`)))
+	})
+	srv := newServer(t, mux.ServeHTTP)
+
+	env := runFetch(t, safeClient(t), srv.URL+"/article")
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL+"/article", p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Contains(t, p.Content, "quick brown fox")
+}
+
+func TestFetch_FallsBackWhenMarkdownAlternateIsBlocked(t *testing.T) {
+	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(articleHTMLWithHead(`
+<link rel="alternate" type="text/markdown" href="http://169.254.169.254/article.md">`)))
+	})
+
+	env := runFetch(t, safeClient(t), srv.URL)
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL, p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Contains(t, p.Content, "quick brown fox")
+}
+
+func TestFetch_FallsBackWhenMarkdownAlternatePointsBackToOriginal(t *testing.T) {
+	var articleRequests atomic.Int32
+	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		articleRequests.Add(1)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(articleHTMLWithHead(`
+<link rel="alternate" type="text/markdown" href="/article">`)))
+	})
+
+	env := runFetch(t, safeClient(t), srv.URL+"/article")
+	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
+
+	var p payload
+	require.NoError(t, json.Unmarshal(env.Result, &p))
+	require.Equal(t, srv.URL+"/article", p.FinalURL)
+	require.Equal(t, "markdown", p.ContentType)
+	require.Contains(t, p.Content, "quick brown fox")
+	require.EqualValues(t, 2, articleRequests.Load())
 }
 
 func TestFetch_MarkdownPassThrough(t *testing.T) {

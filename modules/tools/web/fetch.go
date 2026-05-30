@@ -9,10 +9,12 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"strings"
 
 	readability "codeberg.org/readeck/go-readability"
 	htmltomarkdown "github.com/JohannesKaufmann/html-to-markdown/v2"
+	"golang.org/x/net/html"
 
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/safehttp"
@@ -119,6 +121,12 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 		})
 	}
 
+	if alternateURL, ok := findMarkdownAlternate(body, resp.Request.URL); ok {
+		if payload, ok := f.fetchMarkdownAlternate(ctx, in.URL, alternateURL); ok {
+			return tools.OK(payload)
+		}
+	}
+
 	article, err := readability.FromReader(bytes.NewReader(body), resp.Request.URL)
 	if err != nil {
 		return tools.Fail("extraction_failed: " + err.Error())
@@ -141,11 +149,116 @@ func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
 	})
 }
 
+func (f *Fetch) fetchMarkdownAlternate(ctx context.Context, originalURL string, alternateURL *url.URL) (fetchPayload, bool) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, alternateURL.String(), nil)
+	if err != nil {
+		return fetchPayload{}, false
+	}
+
+	resp, err := f.http.Do(req)
+	if err != nil || resp == nil {
+		return fetchPayload{}, false
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 400 {
+		return fetchPayload{}, false
+	}
+
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if classifyContent(mediaType) != contentKindMarkdown {
+		return fetchPayload{}, false
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fetchPayload{}, false
+	}
+
+	return fetchPayload{
+		URL:         originalURL,
+		FinalURL:    resp.Request.URL.String(),
+		ContentType: "markdown",
+		Content:     string(body),
+	}, true
+}
+
+func findMarkdownAlternate(body []byte, baseURL *url.URL) (*url.URL, bool) {
+	tokenizer := html.NewTokenizer(bytes.NewReader(body))
+	inHead := false
+
+	for {
+		switch tokenizer.Next() {
+		case html.ErrorToken:
+			return nil, false
+		case html.StartTagToken, html.SelfClosingTagToken:
+			token := tokenizer.Token()
+			if strings.EqualFold(token.Data, "head") {
+				inHead = true
+				continue
+			}
+			if !inHead || !strings.EqualFold(token.Data, "link") {
+				continue
+			}
+			if alternateURL, ok := markdownAlternateFromLink(token, baseURL); ok {
+				return alternateURL, true
+			}
+		case html.EndTagToken:
+			token := tokenizer.Token()
+			if strings.EqualFold(token.Data, "head") {
+				return nil, false
+			}
+		}
+	}
+}
+
+func markdownAlternateFromLink(token html.Token, baseURL *url.URL) (*url.URL, bool) {
+	var rel, mediaType, href string
+	for _, attr := range token.Attr {
+		switch strings.ToLower(attr.Key) {
+		case "rel":
+			rel = attr.Val
+		case "type":
+			mediaType = attr.Val
+		case "href":
+			href = attr.Val
+		}
+	}
+	if href == "" || !isMarkdownAlternate(rel, mediaType) {
+		return nil, false
+	}
+	alternateURL, err := baseURL.Parse(href)
+	if err != nil {
+		return nil, false
+	}
+	return alternateURL, true
+}
+
+func isMarkdownAlternate(rel string, mediaType string) bool {
+	if !hasRelToken(rel, "alternate") {
+		return false
+	}
+	parsedType, _, err := mime.ParseMediaType(mediaType)
+	if err != nil {
+		return false
+	}
+	return classifyContent(strings.ToLower(parsedType)) == contentKindMarkdown
+}
+
+func hasRelToken(rel string, token string) bool {
+	for _, field := range strings.Fields(rel) {
+		if strings.EqualFold(field, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func classifyContent(mediaType string) contentKind {
-	switch mediaType {
+	switch strings.ToLower(mediaType) {
 	case "text/html", "application/xhtml+xml":
 		return contentKindHTML
-	case "text/markdown":
+	case "text/markdown", "application/markdown":
 		return contentKindMarkdown
 	case "text/plain":
 		return contentKindText
