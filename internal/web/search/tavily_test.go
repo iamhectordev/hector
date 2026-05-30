@@ -2,6 +2,7 @@ package search_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -25,14 +26,18 @@ func TestNewTavilyValidatesConfig(t *testing.T) {
 
 	_, err := search.NewTavily(search.TavilyConfig{})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "tavily: invalid config")
+	require.Equal(t, "tavily: configure: invalid_config", err.Error())
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorInvalidConfig, searchErr.Kind)
+	require.False(t, searchErr.Retryable())
 
 	_, err = search.NewTavily(search.TavilyConfig{
 		APIKey: "test-key",
 		APIURL: "not a url",
 	})
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "tavily: invalid config")
+	require.Equal(t, "tavily: configure: invalid_config", err.Error())
 
 	client, err := search.NewTavily(search.TavilyConfig{
 		APIKey: "test-key",
@@ -178,4 +183,202 @@ func TestTavilySearchReturnsNormalizedResults(t *testing.T) {
 		Snippet:  "Go 1.25 improves tooling and runtime behavior.",
 		Score:    &score,
 	}}, results)
+}
+
+func TestTavilySearchClassifiesUnauthorized(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, err := fmt.Fprint(w, `{"detail":{"error":"Unauthorized: bad key test-key"}}`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Search(t.Context(), "golang release notes")
+	require.Error(t, err)
+
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorUnauthorized, searchErr.Kind)
+	require.False(t, searchErr.Retryable())
+	require.False(t, search.IsRetryable(err))
+	require.Equal(t, "tavily: search: unauthorized", err.Error())
+	require.NotContains(t, err.Error(), "test-key")
+}
+
+func TestTavilySearchClassifiesRateLimitAsRetryable(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, err := fmt.Fprint(w, `{"detail":{"error":"Your request has been blocked due to excessive requests for test-key"}}`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Search(t.Context(), "golang release notes")
+	require.Error(t, err)
+
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorRateLimited, searchErr.Kind)
+	require.True(t, searchErr.Retryable())
+	require.True(t, search.IsRetryable(err))
+	require.Equal(t, "tavily: search: rate_limited: retryable", err.Error())
+	require.NotContains(t, err.Error(), "test-key")
+}
+
+func TestTavilySearchClassifiesBadRequest(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, err := fmt.Fprint(w, `{"detail":{"error":"Invalid topic sent with test-key"}}`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Search(t.Context(), "golang release notes")
+	require.Error(t, err)
+
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorInvalidRequest, searchErr.Kind)
+	require.False(t, searchErr.Retryable())
+	require.False(t, search.IsRetryable(err))
+	require.Equal(t, "tavily: search: invalid_request", err.Error())
+	require.NotContains(t, err.Error(), "test-key")
+}
+
+func TestTavilySearchClassifiesQuotaExceeded(t *testing.T) {
+	t.Parallel()
+
+	for _, statusCode := range []int{432, 433} {
+		t.Run(fmt.Sprintf("status_%d", statusCode), func(t *testing.T) {
+			t.Parallel()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(statusCode)
+				_, err := fmt.Fprint(w, `{"detail":{"error":"limit exceeded for test-key"}}`)
+				require.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := search.NewTavily(search.TavilyConfig{
+				APIKey: "test-key",
+				APIURL: server.URL,
+			})
+			require.NoError(t, err)
+
+			_, err = client.Search(t.Context(), "golang release notes")
+			require.Error(t, err)
+
+			var searchErr *search.Error
+			require.True(t, errors.As(err, &searchErr))
+			require.Equal(t, search.ErrorQuotaExceeded, searchErr.Kind)
+			require.False(t, searchErr.Retryable())
+			require.False(t, search.IsRetryable(err))
+			require.Equal(t, "tavily: search: quota_exceeded", err.Error())
+			require.NotContains(t, err.Error(), "test-key")
+		})
+	}
+}
+
+func TestTavilySearchClassifiesServerErrorAsRetryable(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err := fmt.Fprint(w, `{"detail":{"error":"server saw test-key"}}`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Search(t.Context(), "golang release notes")
+	require.Error(t, err)
+
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorTemporary, searchErr.Kind)
+	require.True(t, searchErr.Retryable())
+	require.True(t, search.IsRetryable(err))
+	require.Equal(t, "tavily: search: temporary: retryable", err.Error())
+	require.NotContains(t, err.Error(), "test-key")
+}
+
+func TestTavilySearchClassifiesNetworkErrorAsRetryable(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	server.Close()
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Search(t.Context(), "golang release notes")
+	require.Error(t, err)
+
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorNetwork, searchErr.Kind)
+	require.True(t, searchErr.Retryable())
+	require.True(t, search.IsRetryable(err))
+	require.Equal(t, "tavily: search: network: retryable", err.Error())
+	require.NotNil(t, errors.Unwrap(searchErr))
+}
+
+func TestTavilySearchClassifiesMalformedResponse(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := fmt.Fprint(w, `not json with test-key`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	_, err = client.Search(t.Context(), "golang release notes")
+	require.Error(t, err)
+
+	var searchErr *search.Error
+	require.True(t, errors.As(err, &searchErr))
+	require.Equal(t, search.ErrorMalformedResponse, searchErr.Kind)
+	require.False(t, searchErr.Retryable())
+	require.False(t, search.IsRetryable(err))
+	require.Equal(t, "tavily: search: malformed_response", err.Error())
+	require.NotContains(t, err.Error(), "test-key")
+	require.NotNil(t, errors.Unwrap(searchErr))
 }

@@ -5,23 +5,11 @@ import (
 	"fmt"
 
 	"github.com/doron-cohen/klee"
-	kleelog "github.com/doron-cohen/klee/log"
-	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
-	"github.com/iamhectordev/hector/internal/web/search"
-	"github.com/iamhectordev/hector/modules/github"
-	"github.com/iamhectordev/hector/modules/slack"
-	"github.com/iamhectordev/hector/pkg/llm"
+	"github.com/iamhectordev/hector/internal/app"
 )
 
 // Config is the typed application config loaded by klee.
-type Config struct {
-	kleelog.Config `yaml:"log"`
-	DB             dbsqlite.Config `yaml:"db"`
-	LLM            llm.Config      `yaml:"llm"`
-	WebSearch      search.Config   `yaml:"web_search"`
-	GitHub         github.Config   `yaml:"github"`
-	Slack          slack.Config    `yaml:"slack"`
-}
+type Config = app.Config
 
 func configFromContext(ctx context.Context) (*Config, error) {
 	cfg := klee.Config[Config](ctx)

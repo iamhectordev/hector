@@ -54,11 +54,21 @@ func WithTavilyHTTPClient(httpClient *http.Client) TavilyOption {
 
 func NewTavily(cfg TavilyConfig, opts ...TavilyOption) (*Tavily, error) {
 	if err := validate.Struct(cfg); err != nil {
-		return nil, fmt.Errorf("tavily: invalid config: %w", err)
+		return nil, &Error{
+			Provider:  ProviderTavily,
+			Operation: "configure",
+			Kind:      ErrorInvalidConfig,
+			Cause:     err,
+		}
 	}
 	apiURL, err := tavilyAPIURL(cfg.APIURL)
 	if err != nil {
-		return nil, fmt.Errorf("tavily: invalid config: %w", err)
+		return nil, &Error{
+			Provider:  ProviderTavily,
+			Operation: "configure",
+			Kind:      ErrorInvalidConfig,
+			Cause:     err,
+		}
 	}
 	t := &Tavily{
 		apiURL:     apiURL,
@@ -69,7 +79,12 @@ func NewTavily(cfg TavilyConfig, opts ...TavilyOption) (*Tavily, error) {
 		opt(t)
 	}
 	if t.httpClient == nil {
-		return nil, fmt.Errorf("tavily: http client is required")
+		return nil, &Error{
+			Provider:  ProviderTavily,
+			Operation: "configure",
+			Kind:      ErrorInvalidConfig,
+			Cause:     fmt.Errorf("http client is required"),
+		}
 	}
 	return t, nil
 }
@@ -126,7 +141,13 @@ func (t *Tavily) Search(ctx context.Context, query string) ([]Result, error) {
 
 	resp, err := t.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("tavily: search: %w", err)
+		return nil, &Error{
+			Provider:  ProviderTavily,
+			Operation: "search",
+			Kind:      ErrorNetwork,
+			Retry:     true,
+			Cause:     err,
+		}
 	}
 	if resp == nil {
 		return nil, fmt.Errorf("tavily: search: no response")
@@ -135,17 +156,28 @@ func (t *Tavily) Search(ctx context.Context, query string) ([]Result, error) {
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	case resp.StatusCode == http.StatusBadRequest:
+		return nil, tavilyStatusError("search", resp.StatusCode)
 	case resp.StatusCode == http.StatusUnauthorized:
-		return nil, fmt.Errorf("tavily: search: unauthorized")
+		return nil, tavilyStatusError("search", resp.StatusCode)
 	case resp.StatusCode == http.StatusTooManyRequests:
-		return nil, fmt.Errorf("tavily: search: rate limited")
+		return nil, tavilyStatusError("search", resp.StatusCode)
+	case resp.StatusCode == 432 || resp.StatusCode == 433:
+		return nil, tavilyStatusError("search", resp.StatusCode)
+	case resp.StatusCode >= 500:
+		return nil, tavilyStatusError("search", resp.StatusCode)
 	default:
 		return nil, fmt.Errorf("tavily: search: unexpected status %d", resp.StatusCode)
 	}
 
 	var out tavilySearchResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return nil, fmt.Errorf("tavily: search: decode response: %w", err)
+		return nil, &Error{
+			Provider:  ProviderTavily,
+			Operation: "search",
+			Kind:      ErrorMalformedResponse,
+			Cause:     err,
+		}
 	}
 
 	results := make([]Result, 0, len(out.Results))
@@ -159,6 +191,29 @@ func (t *Tavily) Search(ctx context.Context, query string) ([]Result, error) {
 		})
 	}
 	return results, nil
+}
+
+func tavilyStatusError(operation string, statusCode int) *Error {
+	err := &Error{
+		Provider:   ProviderTavily,
+		Operation:  operation,
+		StatusCode: statusCode,
+	}
+	switch {
+	case statusCode == http.StatusBadRequest:
+		err.Kind = ErrorInvalidRequest
+	case statusCode == http.StatusUnauthorized:
+		err.Kind = ErrorUnauthorized
+	case statusCode == http.StatusTooManyRequests:
+		err.Kind = ErrorRateLimited
+		err.Retry = true
+	case statusCode == 432 || statusCode == 433:
+		err.Kind = ErrorQuotaExceeded
+	case statusCode >= 500:
+		err.Kind = ErrorTemporary
+		err.Retry = true
+	}
+	return err
 }
 
 func tavilyAPIURL(value string) (string, error) {

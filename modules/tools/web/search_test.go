@@ -85,6 +85,26 @@ func TestSearchRunReturnsErrorEnvelopeOnClientFailure(t *testing.T) {
 	require.Equal(t, "tavily: search: rate limited", env.Message)
 }
 
+func TestSearchRunSanitizesTypedProviderErrors(t *testing.T) {
+	tool, err := web.NewSearch(&fakeSearcher{err: &internalsearch.Error{
+		Provider:  internalsearch.ProviderTavily,
+		Operation: "search",
+		Kind:      internalsearch.ErrorUnauthorized,
+		Cause:     errors.New("provider body included test-key"),
+	}})
+	require.NoError(t, err)
+
+	out, err := tool.Run(t.Context(), json.RawMessage(`{"query":"example query"}`))
+	require.NoError(t, err)
+
+	var env envelope
+	require.NoError(t, json.Unmarshal([]byte(out), &env))
+	require.Equal(t, "error", env.Status)
+	require.Equal(t, "tavily: search: unauthorized", env.Message)
+	require.NotContains(t, env.Message, "test-key")
+	require.NotContains(t, out, "provider body")
+}
+
 func TestSearchDefinitionRegistersInRegistry(t *testing.T) {
 	tool, err := web.NewSearch(&fakeSearcher{})
 	require.NoError(t, err)
