@@ -664,3 +664,26 @@
     - When article extraction trims too much, should the agent get a raw-fetch escape
       hatch as a separate web_fetch_raw tool?
     children: []
+  - slug: web.search
+    title: Web Search
+    description: Hector searches the open web through configured providers and returns
+      provider-neutral results for grounding current information.
+    status: idea
+    priority: P1
+    stories:
+    - Hector searches the web for current information.
+    - Hector returns search results with titles, URLs, snippets, and provider names.
+    - Admins configure the web search provider.
+    - Hector supports Tavily as a web search provider.
+    - Hector supports Exa as a web search provider.
+    - Hector supports Brave Search API as a web search provider.
+    - Hector reports clear errors when web search is unavailable, unauthorized, rate-limited,
+      or unconfigured.
+    - Hector can fetch selected search results separately through web_fetch.
+    nfrs:
+    - Provider credentials never appear in logs, events, tool output, or model context.
+    - Provider-specific errors are sanitized before crossing the tool boundary.
+    - Tool output uses a provider-neutral result shape, not raw provider responses.
+    open_questions:
+    - Which provider should be implemented first?
+    children: []
