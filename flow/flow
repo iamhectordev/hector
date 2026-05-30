@@ -112,6 +112,16 @@ def _validate(nodes: list, parent_slug: str | None, depth: int, seen: set, error
             elif not all(isinstance(s, str) for s in stories):
                 errors.append(f"'{slug}' stories must be a list of strings")
 
+        nfrs = node.get("nfrs")
+        if nfrs is not None:
+            if not isinstance(nfrs, list):
+                errors.append(f"'{slug}' nfrs must be a list")
+            elif not all(isinstance(n, str) for n in nfrs):
+                errors.append(f"'{slug}' nfrs must be a list of strings")
+
+        if depth == 0 and nfrs is not None:
+            errors.append(f"'{slug}' is a domain — nfrs belong on features, not domains")
+
         children = node.get("children") or []
         if children and depth + 1 >= MAX_DEPTH:
             errors.append(
@@ -228,13 +238,15 @@ def add(parent_slug: str, slug: str, title: str, description: str, status: str, 
         "status": status,
         "priority": priority,
         "stories": [],
+        "nfrs": [],
         "open_questions": [],
         "children": [],
     }
 
     if parent_slug == ".":
-        # Domains don't have stories
+        # Domains don't have feature-level details.
         del new_node["stories"]
+        del new_node["nfrs"]
         tree.append(new_node)
     else:
         parent_node, _ = find(tree, parent_slug)
@@ -270,6 +282,32 @@ def story(slug: str, story: str) -> None:
     node["stories"].append(story)
     save(tree)
     click.echo(f"Added story [{len(node['stories']) - 1}] to '{slug}'")
+
+
+@cli.command()
+@click.argument("slug")
+@click.argument("nfr")
+def nfr(slug: str, nfr: str) -> None:
+    """Add a non-functional requirement to a feature."""
+    tree = load()
+    require_valid(tree)
+
+    flat = flatten(tree)
+    if slug not in flat:
+        click.echo(f"Error: slug '{slug}' not found", err=True)
+        sys.exit(1)
+
+    _, _, depth = flat[slug]
+    if depth == 0:
+        click.echo(f"Error: '{slug}' is a domain — nfrs belong on features, not domains", err=True)
+        sys.exit(1)
+
+    node, _ = find(tree, slug)
+    if not node.get("nfrs"):
+        node["nfrs"] = []
+    node["nfrs"].append(nfr)
+    save(tree)
+    click.echo(f"Added nfr [{len(node['nfrs']) - 1}] to '{slug}'")
 
 
 @cli.command()
@@ -389,6 +427,14 @@ def feature(slug: str) -> None:
                 click.echo(f"  [{i}] {s}")
         else:
             click.echo("\nstories:   none")
+
+        nfrs = node.get("nfrs") or []
+        if nfrs:
+            click.echo("\nnfrs:")
+            for i, n in enumerate(nfrs):
+                click.echo(f"  [{i}] {n}")
+        else:
+            click.echo("\nnfrs:      none")
 
     questions = node.get("open_questions") or []
     if questions:
