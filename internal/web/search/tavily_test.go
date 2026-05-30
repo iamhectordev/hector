@@ -1,6 +1,7 @@
 package search_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -125,4 +126,56 @@ func TestTavilyVerifyReportsUnexpectedStatusWithoutBody(t *testing.T) {
 	require.Contains(t, err.Error(), "tavily: verify: unexpected status 500")
 	require.NotContains(t, err.Error(), "test-key")
 	require.NotContains(t, err.Error(), "server saw")
+}
+
+func TestTavilySearchReturnsNormalizedResults(t *testing.T) {
+	t.Parallel()
+
+	var authHeader string
+	var requestBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/search", r.URL.Path)
+		authHeader = r.Header.Get("Authorization")
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&requestBody))
+
+		_, err := fmt.Fprint(w, `{
+			"query": "golang release notes",
+			"results": [
+				{
+					"title": "Go 1.25 Release Notes",
+					"url": "https://go.dev/doc/go1.25",
+					"content": "Go 1.25 improves tooling and runtime behavior.",
+					"score": 0.98,
+					"raw_content": "not exposed"
+				}
+			],
+			"request_id": "req-secret"
+		}`)
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := search.NewTavily(search.TavilyConfig{
+		APIKey: "test-key",
+		APIURL: server.URL,
+	})
+	require.NoError(t, err)
+
+	results, err := client.Search(t.Context(), "golang release notes")
+	require.NoError(t, err)
+	require.Equal(t, "Bearer test-key", authHeader)
+	require.Equal(t, "golang release notes", requestBody["query"])
+	require.Equal(t, "basic", requestBody["search_depth"])
+	require.InDelta(t, 5, requestBody["max_results"], 0)
+
+	score := 0.98
+	require.Equal(t, []search.Result{{
+		Provider: search.ProviderTavily,
+		URL:      "https://go.dev/doc/go1.25",
+		Title:    "Go 1.25 Release Notes",
+		Snippet:  "Go 1.25 improves tooling and runtime behavior.",
+		Score:    &score,
+	}}, results)
 }

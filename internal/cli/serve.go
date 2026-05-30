@@ -42,7 +42,8 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	if err := verifyWebSearch(ctx, cfg.WebSearch); err != nil {
+	webSearch, err := newWebSearchTool(cfg.WebSearch)
+	if err != nil {
 		return err
 	}
 
@@ -92,7 +93,7 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow, webFetch)
+	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow, webFetch, webSearch)
 	if err != nil {
 		return err
 	}
@@ -147,18 +148,18 @@ func serveAction(ctx context.Context, _ *cli.Command) error {
 	return rep.Err()
 }
 
-func verifyWebSearch(ctx context.Context, cfg search.Config) error {
+func newWebSearchTool(cfg search.Config) (tools.Tool, error) {
 	if !cfg.Enabled() {
-		return nil
+		return nil, nil
 	}
 	switch cfg.Provider {
 	case search.ProviderTavily:
 		client, err := search.NewTavily(cfg.Tavily)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		return client.Verify(ctx)
+		return web.NewSearch(client)
 	default:
-		return fmt.Errorf("web_search: unsupported provider %q", cfg.Provider)
+		return nil, fmt.Errorf("web_search: unsupported provider %q", cfg.Provider)
 	}
 }

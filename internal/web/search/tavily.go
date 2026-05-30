@@ -1,7 +1,9 @@
 package search
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -26,6 +28,23 @@ type Tavily struct {
 }
 
 type TavilyOption func(*Tavily)
+
+type tavilySearchRequest struct {
+	Query       string `json:"query"`
+	SearchDepth string `json:"search_depth"`
+	MaxResults  int    `json:"max_results"`
+}
+
+type tavilySearchResponse struct {
+	Results []tavilySearchResult `json:"results"`
+}
+
+type tavilySearchResult struct {
+	Title   string   `json:"title"`
+	URL     string   `json:"url"`
+	Content string   `json:"content"`
+	Score   *float64 `json:"score"`
+}
 
 func WithTavilyHTTPClient(httpClient *http.Client) TavilyOption {
 	return func(t *Tavily) {
@@ -81,6 +100,65 @@ func (t *Tavily) Verify(ctx context.Context) error {
 	default:
 		return fmt.Errorf("tavily: verify: unexpected status %d", resp.StatusCode)
 	}
+}
+
+func (t *Tavily) Search(ctx context.Context, query string) ([]Result, error) {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil, fmt.Errorf("tavily: search: query is required")
+	}
+
+	body, err := json.Marshal(tavilySearchRequest{
+		Query:       query,
+		SearchDepth: "basic",
+		MaxResults:  5,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("tavily: search: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.apiURL+"/search", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("tavily: search: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+t.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := t.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("tavily: search: %w", err)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("tavily: search: no response")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	switch {
+	case resp.StatusCode >= 200 && resp.StatusCode < 300:
+	case resp.StatusCode == http.StatusUnauthorized:
+		return nil, fmt.Errorf("tavily: search: unauthorized")
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, fmt.Errorf("tavily: search: rate limited")
+	default:
+		return nil, fmt.Errorf("tavily: search: unexpected status %d", resp.StatusCode)
+	}
+
+	var out tavilySearchResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("tavily: search: decode response: %w", err)
+	}
+
+	results := make([]Result, 0, len(out.Results))
+	for _, result := range out.Results {
+		results = append(results, Result{
+			Provider: ProviderTavily,
+			URL:      result.URL,
+			Title:    result.Title,
+			Snippet:  result.Content,
+			Score:    result.Score,
+		})
+	}
+	return results, nil
 }
 
 func tavilyAPIURL(value string) (string, error) {
