@@ -13,6 +13,7 @@ import (
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/modules/tools/web"
+	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/safehttp"
@@ -24,8 +25,9 @@ import (
 
 // Runtime wires and runs the long-running Hector application.
 type Runtime struct {
-	cfg    Config
-	logger *slog.Logger
+	cfg     Config
+	profile Profile
+	logger  *slog.Logger
 
 	db  *sql.DB
 	bus *waffle.EventBus
@@ -35,8 +37,9 @@ type Runtime struct {
 // NewRuntime builds a Runtime from typed application config.
 func NewRuntime(cfg Config, opts ...Option) (*Runtime, error) {
 	r := &Runtime{
-		cfg:    cfg,
-		logger: slog.Default().With("component", "runtime"),
+		cfg:     cfg,
+		profile: ProfileServe,
+		logger:  slog.Default().With("component", "runtime"),
 	}
 	for _, opt := range opts {
 		if opt == nil {
@@ -83,15 +86,15 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	slackModule, err := slack.NewModule(r.bus, r.cfg.Slack)
+	surfaces, replyHandlers, err := r.initSurfaces()
 	if err != nil {
 		return err
 	}
-	toolRegistry, toolsModule, err := r.initTools(slackModule, webSearch)
+	toolRegistry, toolsModule, err := r.initTools(replyHandlers, webSearch)
 	if err != nil {
 		return err
 	}
-	modules, err := r.initModules(completer, toolRegistry, toolsModule, slackModule)
+	modules, err := r.initModules(completer, toolRegistry, toolsModule, surfaces)
 	if err != nil {
 		return err
 	}
@@ -128,8 +131,23 @@ func (r *Runtime) initBus() error {
 	return nil
 }
 
-func (r *Runtime) initTools(slackModule *slack.Module, webSearch tools.Tool) (*tools.Registry, *tools.Module, error) {
-	replyRouter, err := comms.NewReplyRouter(slackModule.NewReplyHandler())
+func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, error) {
+	switch r.profile {
+	case ProfileServe:
+		slackModule, err := slack.NewModule(r.bus, r.cfg.Slack)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []supervisor.Module{slackModule}, []comms.ReplyHandler{slackModule.NewReplyHandler()}, nil
+	case ProfileChat:
+		return []supervisor.Module{tui.NewModule(r.bus)}, []comms.ReplyHandler{tui.NewReplyHandler(nil)}, nil
+	default:
+		return nil, nil, fmt.Errorf("app: unsupported profile %q", r.profile)
+	}
+}
+
+func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.Tool) (*tools.Registry, *tools.Module, error) {
+	replyRouter, err := comms.NewReplyRouter(replyHandlers...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -160,7 +178,7 @@ func (r *Runtime) initModules(
 	completer llm.Completer,
 	toolRegistry *tools.Registry,
 	toolsModule *tools.Module,
-	slackModule *slack.Module,
+	surfaces []supervisor.Module,
 ) ([]supervisor.Module, error) {
 	modules := []supervisor.Module{}
 	if r.cfg.GitHub.Configured() {
@@ -186,8 +204,8 @@ func (r *Runtime) initModules(
 			agent.WithSessionStore(sessionStore),
 		),
 		toolsModule,
-		slackModule,
 	)
+	modules = append(modules, surfaces...)
 	return modules, nil
 }
 

@@ -9,17 +9,18 @@ import (
 	"time"
 
 	"github.com/iamhectordev/hector/modules/agent"
-	"github.com/iamhectordev/hector/modules/slack"
+	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/modules/tui"
-	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
+	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
+	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
 	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/stretchr/testify/require"
 )
 
-func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
+func TestChat_LineFromTUI_RepliesViaReplyTool(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -27,10 +28,16 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
+	registry := newTUIReplyRegistry(t, buf)
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}),
+		agent.NewModule(bus, agent.NewLoop(
+			llmtest.NewCompleter(t,
+				llmtest.ToolCalls(llmtest.Call("c1", "reply", `{"text":"hello back"}`)),
+				llmtest.Stop(""),
+			),
+			agent.WithTools(registry),
+		),
 			agent.WithSessionStore(noopSessionStore{}),
-			agent.WithWriter(buf),
 		),
 		tui.NewModule(bus, tui.WithReader(strings.NewReader("hello\n"))),
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
@@ -48,10 +55,10 @@ func TestChatEcho_LineFromTUI_PrintsViaAgent(t *testing.T) {
 	rep := <-done
 	require.ErrorIs(t, rep.Err(), context.Canceled)
 	require.NoError(t, bus.Shutdown(context.Background()))
-	require.Equal(t, "<msg>\n  <text>hello</text>\n</msg>\n", buf.String())
+	require.Equal(t, "hello back\n", buf.String())
 }
 
-func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
+func TestChat_LineFromTUI_DoesNotPrintPlainAssistantStop(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 
@@ -59,11 +66,16 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
+	registry := newTUIReplyRegistry(t, buf)
+	completer := &plainStopCompleter{done: make(chan struct{})}
 	sv, err := supervisor.New([]supervisor.Module{
-		agent.NewModule(bus, agent.NewLoop(&echo.Completer{}),
-			agent.WithSessionStore(noopSessionStore{}),
-			agent.WithWriter(buf),
+		agent.NewModule(bus, agent.NewLoop(
+			completer,
+			agent.WithTools(registry),
 		),
+			agent.WithSessionStore(noopSessionStore{}),
+		),
+		tui.NewModule(bus, tui.WithReader(strings.NewReader("hello\n"))),
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
@@ -72,20 +84,38 @@ func TestChatEcho_MessageFromSlack_PrintsViaAgent(t *testing.T) {
 		done <- sv.Run(ctx)
 	}()
 
-	require.Eventually(t, func() bool {
-		err := bus.Record(ctx, slack.MessageReceived.New(slack.MessageReceivedData{Text: "hello from slack"}))
-		if err != nil {
-			return false
-		}
+	require.NoError(t, waitForSignal(t.Context(), completer.done, 2*time.Second))
+	require.Never(t, func() bool {
 		return waitForWrite(t.Context(), buf, 10*time.Millisecond) == nil
-	}, 2*time.Second, 10*time.Millisecond)
+	}, 100*time.Millisecond, 10*time.Millisecond)
 
 	cancel()
 
 	rep := <-done
 	require.ErrorIs(t, rep.Err(), context.Canceled)
 	require.NoError(t, bus.Shutdown(context.Background()))
-	require.Contains(t, buf.String(), "<msg>\n  <text>hello from slack</text>\n</msg>\n")
+	require.Empty(t, buf.String())
+}
+
+func newTUIReplyRegistry(t *testing.T, out io.Writer) *tools.Registry {
+	t.Helper()
+
+	replyRouter, err := comms.NewReplyRouter(tui.NewReplyHandler(out))
+	require.NoError(t, err)
+	registry, err := tools.NewRegistry(replyRouter)
+	require.NoError(t, err)
+	return registry
+}
+
+type plainStopCompleter struct {
+	done chan struct{}
+}
+
+func (c *plainStopCompleter) Complete(context.Context, schema.CompletionRequest) (*schema.Message, error) {
+	reply := schema.AssistantMessage("plain assistant text")
+	reply.FinishReason = schema.FinishReasonStop
+	close(c.done)
+	return reply, nil
 }
 
 type safeBuffer struct {
@@ -120,8 +150,12 @@ func (s *safeBuffer) String() string {
 }
 
 func waitForWrite(ctx context.Context, buf *safeBuffer, timeout time.Duration) error {
+	return waitForSignal(ctx, buf.written, timeout)
+}
+
+func waitForSignal(ctx context.Context, ch <-chan struct{}, timeout time.Duration) error {
 	select {
-	case <-buf.written:
+	case <-ch:
 		return nil
 	case <-time.After(timeout):
 		return context.DeadlineExceeded

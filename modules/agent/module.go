@@ -2,10 +2,7 @@ package agent
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log/slog"
-	"os"
 
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tui"
@@ -20,7 +17,6 @@ type Module struct {
 	runner     Runner
 	sessions   session.Store
 	baseSystem string
-	out        io.Writer
 	logger     *slog.Logger
 }
 
@@ -37,20 +33,10 @@ func WithSessionStore(store session.Store) Option {
 	return func(m *Module) { m.sessions = store }
 }
 
-// WithWriter sets where replies are printed. Defaults to stdout.
-func WithWriter(w io.Writer) Option {
-	return func(m *Module) {
-		if w != nil {
-			m.out = w
-		}
-	}
-}
-
 func NewModule(bus *waffle.EventBus, runner Runner, opts ...Option) *Module {
 	m := &Module{
 		bus:    bus,
 		runner: runner,
-		out:    os.Stdout,
 		logger: slog.Default().With("component", "module", "module", "agent"),
 	}
 	for _, opt := range opts {
@@ -91,14 +77,7 @@ func (m *Module) newAgentContext(sourceURI string) (Context, error) {
 }
 
 func (m *Module) handle(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) error {
-	reply, err := m.runner.Run(ctx, agentCtx, system, messages)
-	if err != nil {
-		return err
-	}
-	if reply == nil {
-		return nil
-	}
-	_, err = fmt.Fprintln(m.out, reply.Content)
+	_, err := m.runner.Run(ctx, agentCtx, system, messages)
 	return err
 }
 
