@@ -5,39 +5,45 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/sebdah/goldie/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/iamhectordev/hector/internal/web/fetch"
 	"github.com/iamhectordev/hector/pkg/safehttp"
 )
 
-const articleHTML = `<!doctype html>
-<html><head><title>The Quick Brown Fox</title></head>
-<body>
-<header><nav>nav links</nav></header>
-<article>
-<h1>The Quick Brown Fox</h1>
-<p>The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.</p>
-<p>Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow.</p>
-<p>Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs.</p>
-</article>
-<footer>footer</footer>
-</body></html>`
+// extraction is the stable subset of fetch.Result used for golden assertions.
+// URL and FinalURL are dynamic per test run and excluded deliberately.
+type extraction struct {
+	Title       string `json:"title,omitempty"`
+	ContentType string `json:"content_type"`
+	Content     string `json:"content"`
+}
 
-func articleHTMLWithHead(extraHead string) string {
+func readFixture(t *testing.T, path string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return b
+}
+
+// articleHTMLWithHead builds a full HTML page with a custom <head> using the
+// shared article body from testdata.
+func articleHTMLWithHead(t *testing.T, extraHead string) string {
+	t.Helper()
+	body := readFixture(t, filepath.Join("testdata", "html", "article_body.html"))
 	return `<!doctype html>
 <html><head>
 <title>The Quick Brown Fox</title>` + extraHead + `
 </head><body><article>
-<h1>The Quick Brown Fox</h1>
-<p>The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.</p>
-<p>Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow.</p>
-<p>Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs.</p>
+` + string(body) + `
 </article></body></html>`
 }
 
@@ -72,24 +78,43 @@ func (r *fakeResolver) LookupHost(_ context.Context, _ string) ([]string, error)
 	return []string{r.ip}, nil
 }
 
+// TestFetcher_HTMLExtracts is the golden table for HTML extraction scenarios.
+// To add a new scenario: drop an .html file in testdata/html/ and add its name
+// here, then run `go test -update ./...` to capture the expected output.
+func TestFetcher_HTMLExtracts(t *testing.T) {
+	scenarios := []string{
+		"article",
+	}
+
+	g := goldie.New(t,
+		goldie.WithFixtureDir("testdata"),
+		goldie.WithDiffEngine(goldie.ColoredDiff),
+	)
+
+	for _, name := range scenarios {
+		t.Run(name, func(t *testing.T) {
+			html := readFixture(t, filepath.Join("testdata", "html", name+".html"))
+			srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				_, _ = w.Write(html)
+			})
+
+			result, err := newFetcher(t, safeClient(t)).Fetch(t.Context(), srv.URL)
+			require.NoError(t, err)
+			require.Equal(t, srv.URL, result.URL)
+			require.Equal(t, srv.URL, result.FinalURL)
+			g.AssertJson(t, name, extraction{
+				Title:       result.Title,
+				ContentType: result.ContentType,
+				Content:     result.Content,
+			})
+		})
+	}
+}
+
 func TestNewFetcher_NilClient(t *testing.T) {
 	_, err := fetch.NewFetcher(nil)
 	require.Error(t, err)
-}
-
-func TestFetcher_HappyPath(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTML))
-	})
-
-	result, err := newFetcher(t, safeClient(t)).Fetch(t.Context(), srv.URL)
-	require.NoError(t, err)
-	require.Equal(t, srv.URL, result.URL)
-	require.Equal(t, srv.URL, result.FinalURL)
-	require.Equal(t, "The Quick Brown Fox", result.Title)
-	require.Equal(t, "markdown", result.ContentType)
-	require.Contains(t, result.Content, "quick brown fox")
 }
 
 func TestFetcher_UsesMarkdownAlternate(t *testing.T) {
@@ -147,7 +172,7 @@ func TestFetcher_FallsBackWhenMarkdownAlternateReturnsHTML(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
+		_, _ = w.Write([]byte(articleHTMLWithHead(t, `
 <link rel="alternate" type="text/markdown" href="/article.md">`)))
 	})
 	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
@@ -168,7 +193,7 @@ func TestFetcher_FallsBackWhenMarkdownAlternate404s(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
+		_, _ = w.Write([]byte(articleHTMLWithHead(t, `
 <link rel="alternate" type="text/markdown" href="/missing.md">`)))
 	})
 	srv := newServer(t, mux.ServeHTTP)
@@ -183,7 +208,7 @@ func TestFetcher_FallsBackWhenMarkdownAlternate404s(t *testing.T) {
 func TestFetcher_FallsBackWhenMarkdownAlternateIsBlocked(t *testing.T) {
 	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
+		_, _ = w.Write([]byte(articleHTMLWithHead(t, `
 <link rel="alternate" type="text/markdown" href="http://169.254.169.254/article.md">`)))
 	})
 
@@ -199,7 +224,7 @@ func TestFetcher_FallsBackWhenMarkdownAlternatePointsBackToOriginal(t *testing.T
 	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		articleRequests.Add(1)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
+		_, _ = w.Write([]byte(articleHTMLWithHead(t, `
 <link rel="alternate" type="text/markdown" href="/article">`)))
 	})
 
@@ -242,11 +267,12 @@ func TestFetcher_PlainTextPassThrough(t *testing.T) {
 }
 
 func TestFetcher_Redirect(t *testing.T) {
+	articleHTML := readFixture(t, filepath.Join("testdata", "html", "article.html"))
 	var articleURL string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTML))
+		_, _ = w.Write(articleHTML)
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, articleURL, http.StatusFound)
