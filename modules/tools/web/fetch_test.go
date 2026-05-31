@@ -3,86 +3,39 @@ package web_test
 import (
 	"context"
 	"encoding/json"
-	"io"
+	"errors"
 	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 
+	internalfetch "github.com/iamhectordev/hector/internal/web/fetch"
 	"github.com/iamhectordev/hector/modules/tools/web"
 	"github.com/iamhectordev/hector/pkg/safehttp"
 )
 
-const articleHTML = `<!doctype html>
-<html><head><title>The Quick Brown Fox</title></head>
-<body>
-<header><nav>nav links</nav></header>
-<article>
-<h1>The Quick Brown Fox</h1>
-<p>The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.</p>
-<p>Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow.</p>
-<p>Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs.</p>
-</article>
-<footer>footer</footer>
-</body></html>`
-
-func articleHTMLWithHead(extraHead string) string {
-	return `<!doctype html>
-<html><head>
-<title>The Quick Brown Fox</title>` + extraHead + `
-</head><body><article>
-<h1>The Quick Brown Fox</h1>
-<p>The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog.</p>
-<p>Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow. Sphinx of black quartz, judge my vow.</p>
-<p>Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs. Pack my box with five dozen liquor jugs.</p>
-</article></body></html>`
-}
-
+// envelope is shared with search_test.go (same package web_test).
 type envelope struct {
 	Status  string          `json:"status"`
 	Result  json.RawMessage `json:"result,omitempty"`
 	Message string          `json:"message,omitempty"`
 }
 
-type payload struct {
-	URL         string `json:"url"`
-	FinalURL    string `json:"final_url"`
-	Title       string `json:"title"`
-	ContentType string `json:"content_type"`
-	Content     string `json:"content"`
+type fakeFetcher struct {
+	result internalfetch.Result
+	err    error
 }
 
-// safeClient returns a safe HTTP client with loopback allowed for test servers.
+func (f *fakeFetcher) Fetch(_ context.Context, _ string) (internalfetch.Result, error) {
+	return f.result, f.err
+}
+
 func safeClient(t *testing.T, opts ...safehttp.Option) *http.Client {
 	t.Helper()
 	opts = append([]safehttp.Option{safehttp.WithAllowLoopback()}, opts...)
 	client, err := safehttp.Client(opts...)
 	require.NoError(t, err)
 	return client
-}
-
-func newServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
-	t.Helper()
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func runFetch(t *testing.T, client *http.Client, url string) envelope {
-	t.Helper()
-	tool, err := web.NewFetch(client)
-	require.NoError(t, err)
-	args, err := json.Marshal(map[string]string{"url": url})
-	require.NoError(t, err)
-	out, err := tool.Run(t.Context(), args)
-	require.NoError(t, err)
-	var env envelope
-	require.NoError(t, json.Unmarshal([]byte(out), &env))
-	return env
 }
 
 func TestFetch_Definition(t *testing.T) {
@@ -100,330 +53,52 @@ func TestNewFetch_NilClient(t *testing.T) {
 	require.Nil(t, tool)
 }
 
-func TestFetch_HappyPath(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTML))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL, p.URL)
-	require.Equal(t, srv.URL, p.FinalURL)
-	require.Equal(t, "The Quick Brown Fox", p.Title)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Contains(t, p.Content, "quick brown fox")
-}
-
-func TestFetch_UsesMarkdownAlternate(t *testing.T) {
-	const alternateContent = "# Alternate article\n\nThis came from markdown.\n"
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!doctype html>
-<html><head>
-<title>HTML Article</title>
-<link rel="alternate" type="text/markdown" href="/article.md">
-</head><body><article><p>This came from HTML.</p></article></body></html>`))
-	})
-	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		_, _ = w.Write([]byte(alternateContent))
-	})
-	srv := newServer(t, mux.ServeHTTP)
-
-	env := runFetch(t, safeClient(t), srv.URL+"/article")
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL+"/article", p.URL)
-	require.Equal(t, srv.URL+"/article.md", p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Equal(t, alternateContent, p.Content)
-}
-
-func TestFetch_UsesApplicationMarkdownAlternateCaseInsensitively(t *testing.T) {
-	const alternateContent = "# Application markdown\n"
-
-	mux := http.NewServeMux()
-	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!doctype html>
-<html><head>
-<title>HTML Article</title>
-<link rel="canonical ALTERNATE" type="Application/Markdown" href="/article.md">
-</head><body><article><p>This came from HTML.</p></article></body></html>`))
-	})
-	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "Application/Markdown; charset=utf-8")
-		_, _ = w.Write([]byte(alternateContent))
-	})
-	srv := newServer(t, mux.ServeHTTP)
-
-	env := runFetch(t, safeClient(t), srv.URL+"/article")
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL+"/article.md", p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Equal(t, alternateContent, p.Content)
-}
-
-func TestFetch_FallsBackWhenMarkdownAlternateReturnsHTML(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
-<link rel="alternate" type="text/markdown" href="/article.md">`)))
-	})
-	mux.HandleFunc("/article.md", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte("<html><body><p>This is HTML.</p></body></html>"))
-	})
-	srv := newServer(t, mux.ServeHTTP)
-
-	env := runFetch(t, safeClient(t), srv.URL+"/article")
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL+"/article", p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Contains(t, p.Content, "quick brown fox")
-	require.NotContains(t, p.Content, "This is HTML")
-}
-
-func TestFetch_FallsBackWhenMarkdownAlternate404s(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
-<link rel="alternate" type="text/markdown" href="/missing.md">`)))
-	})
-	srv := newServer(t, mux.ServeHTTP)
-
-	env := runFetch(t, safeClient(t), srv.URL+"/article")
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL+"/article", p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Contains(t, p.Content, "quick brown fox")
-}
-
-func TestFetch_FallsBackWhenMarkdownAlternateIsBlocked(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
-<link rel="alternate" type="text/markdown" href="http://169.254.169.254/article.md">`)))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL, p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Contains(t, p.Content, "quick brown fox")
-}
-
-func TestFetch_FallsBackWhenMarkdownAlternatePointsBackToOriginal(t *testing.T) {
-	var articleRequests atomic.Int32
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		articleRequests.Add(1)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTMLWithHead(`
-<link rel="alternate" type="text/markdown" href="/article">`)))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL+"/article")
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL+"/article", p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Contains(t, p.Content, "quick brown fox")
-	require.EqualValues(t, 2, articleRequests.Load())
-}
-
-func TestFetch_MarkdownPassThrough(t *testing.T) {
-	const content = "# Release notes\n\n- Shipped raw markdown support.\n"
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		_, _ = w.Write([]byte(content))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL, p.URL)
-	require.Equal(t, srv.URL, p.FinalURL)
-	require.Equal(t, "markdown", p.ContentType)
-	require.Equal(t, content, p.Content)
-}
-
-func TestFetch_PlainTextPassThrough(t *testing.T) {
-	const content = "plain status report\nline two\n"
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte(content))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL, p.URL)
-	require.Equal(t, srv.URL, p.FinalURL)
-	require.Equal(t, "text", p.ContentType)
-	require.Equal(t, content, p.Content)
-}
-
-func TestFetch_Redirect(t *testing.T) {
-	var articleURL string
-	mux := http.NewServeMux()
-	mux.HandleFunc("/article", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(articleHTML))
-	})
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, articleURL, http.StatusFound)
-	})
-	srv := newServer(t, mux.ServeHTTP)
-	articleURL = srv.URL + "/article"
-
-	env := runFetch(t, safeClient(t), srv.URL+"/start")
-	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
-
-	var p payload
-	require.NoError(t, json.Unmarshal(env.Result, &p))
-	require.Equal(t, srv.URL+"/start", p.URL)
-	require.Equal(t, articleURL, p.FinalURL)
-}
-
-func TestFetch_NonHTML(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/pdf")
-		_, _ = w.Write([]byte("%PDF-1.4\n..."))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "blocked_content_type:"),
-		"got message: %q", env.Message)
-}
-
-func TestFetch_EmptyExtraction(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte("<html><body></body></html>"))
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "extraction_failed:"),
-		"got message: %q", env.Message)
-}
-
-func TestFetch_404(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "nope", http.StatusNotFound)
-	})
-
-	env := runFetch(t, safeClient(t), srv.URL)
-	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "fetch_failed:"),
-		"got message: %q", env.Message)
-	require.Contains(t, env.Message, "404")
-}
-
-func TestFetch_InvalidURL(t *testing.T) {
-	env := runFetch(t, safeClient(t), "://not-a-url")
-	require.Equal(t, "error", env.Status)
-	require.True(t,
-		strings.HasPrefix(env.Message, "invalid_url:") ||
-			strings.HasPrefix(env.Message, "fetch_failed:"),
-		"got message: %q", env.Message)
-}
-
-// fakeResolver implements safehttp.Resolver for injecting controlled DNS responses.
-type fakeResolver struct {
-	ip string
-}
-
-func (r *fakeResolver) LookupHost(_ context.Context, _ string) ([]string, error) {
-	return []string{r.ip}, nil
-}
-
-func TestFetch_BlockedAddress(t *testing.T) {
-	r := &fakeResolver{ip: "10.0.0.1"}
-	client, err := safehttp.Client(safehttp.WithResolver(r))
+func TestFetch_RunMapsSuccessToOKEnvelope(t *testing.T) {
+	tool, err := web.NewFetchWithFetcher(&fakeFetcher{result: internalfetch.Result{
+		URL:         "https://example.com",
+		FinalURL:    "https://example.com/final",
+		Title:       "Example",
+		ContentType: "markdown",
+		Content:     "# Example",
+	}})
 	require.NoError(t, err)
 
-	env := runFetch(t, client, "http://internal.corp/article")
-	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "blocked_address:"),
-		"got message: %q", env.Message)
+	out, err := tool.Run(t.Context(), json.RawMessage(`{"url":"https://example.com"}`))
+	require.NoError(t, err)
+
+	var env envelope
+	require.NoError(t, json.Unmarshal([]byte(out), &env))
+	require.Equal(t, "ok", env.Status)
+
+	var result internalfetch.Result
+	require.NoError(t, json.Unmarshal(env.Result, &result))
+	require.Equal(t, "https://example.com/final", result.FinalURL)
+	require.Equal(t, "markdown", result.ContentType)
+	require.Equal(t, "# Example", result.Content)
 }
 
-func TestFetch_BlockedScheme(t *testing.T) {
-	env := runFetch(t, safeClient(t), "ftp://example.com/resource")
+func TestFetch_RunMapsErrorToErrorEnvelope(t *testing.T) {
+	tool, err := web.NewFetchWithFetcher(&fakeFetcher{err: errors.New("fetch_failed: http 404")})
+	require.NoError(t, err)
+
+	out, err := tool.Run(t.Context(), json.RawMessage(`{"url":"https://example.com"}`))
+	require.NoError(t, err)
+
+	var env envelope
+	require.NoError(t, json.Unmarshal([]byte(out), &env))
 	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "blocked_scheme:"),
-		"got message: %q", env.Message)
+	require.Equal(t, "fetch_failed: http 404", env.Message)
 }
 
-func TestFetch_Oversize(t *testing.T) {
-	const limit = 1024
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		_, _ = io.Copy(w, io.LimitReader(strings.NewReader(strings.Repeat("x", limit+1)), limit+1))
-	})
+func TestFetch_RunRejectsInvalidArgs(t *testing.T) {
+	tool, err := web.NewFetchWithFetcher(&fakeFetcher{})
+	require.NoError(t, err)
 
-	client := safeClient(t, safehttp.WithMaxBodyBytes(limit))
-	env := runFetch(t, client, srv.URL)
+	out, err := tool.Run(t.Context(), json.RawMessage(`not json`))
+	require.NoError(t, err)
+
+	var env envelope
+	require.NoError(t, json.Unmarshal([]byte(out), &env))
 	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "oversize:"),
-		"got message: %q", env.Message)
-}
-
-func TestFetch_MarkdownPassThroughOversize(t *testing.T) {
-	const limit = 1024
-	srv := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/markdown")
-		_, _ = io.Copy(w, io.LimitReader(strings.NewReader(strings.Repeat("x", limit+1)), limit+1))
-	})
-
-	client := safeClient(t, safehttp.WithMaxBodyBytes(limit))
-	env := runFetch(t, client, srv.URL)
-	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "oversize:"),
-		"got message: %q", env.Message)
-}
-
-func TestFetch_Timeout(t *testing.T) {
-	srv := newServer(t, func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-r.Context().Done():
-		case <-time.After(5 * time.Second):
-		}
-	})
-
-	client := safeClient(t, safehttp.WithTimeout(10*time.Millisecond))
-	env := runFetch(t, client, srv.URL)
-	require.Equal(t, "error", env.Status)
-	require.True(t, strings.HasPrefix(env.Message, "timeout:"),
-		"got message: %q", env.Message)
+	require.Contains(t, env.Message, "invalid_args:")
 }
