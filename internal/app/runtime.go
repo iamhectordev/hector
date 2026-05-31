@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log/slog"
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
+	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
-	"github.com/iamhectordev/hector/modules/github"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
+	githubtools "github.com/iamhectordev/hector/modules/tools/github"
 	"github.com/iamhectordev/hector/modules/tools/web"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
@@ -29,9 +31,11 @@ type Runtime struct {
 	profile Profile
 	logger  *slog.Logger
 
-	db  *sql.DB
-	bus *waffle.EventBus
-	sv  *supervisor.Supervisor
+	tracing       *tracing.Runtime
+	db            *sql.DB
+	bus           *waffle.EventBus
+	sv            *supervisor.Supervisor
+	githubCloser  io.Closer
 }
 
 // NewRuntime builds a Runtime from typed application config.
@@ -57,6 +61,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 	r.logger.InfoContext(ctx, "starting app runtime")
 	defer r.close(ctx)
 
+	if err := r.initTracing(ctx); err != nil {
+		return err
+	}
 	if err := r.init(ctx); err != nil {
 		return err
 	}
@@ -68,6 +75,15 @@ func (r *Runtime) Start(ctx context.Context) error {
 		"signal", rep.Signal,
 	)
 	return rep.Err()
+}
+
+func (r *Runtime) initTracing(ctx context.Context) error {
+	tracingRuntime, err := tracing.Setup(ctx, r.cfg.Tracing)
+	if err != nil {
+		return err
+	}
+	r.tracing = tracingRuntime
+	return nil
 }
 
 func (r *Runtime) init(ctx context.Context) error {
@@ -94,7 +110,7 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	modules, err := r.initModules(completer, toolRegistry, toolsModule, surfaces)
+	modules, err := r.initModules(ctx, completer, toolRegistry, toolsModule, surfaces)
 	if err != nil {
 		return err
 	}
@@ -175,22 +191,19 @@ func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.
 }
 
 func (r *Runtime) initModules(
+	ctx context.Context,
 	completer llm.Completer,
 	toolRegistry *tools.Registry,
 	toolsModule *tools.Module,
 	surfaces []supervisor.Module,
 ) ([]supervisor.Module, error) {
 	modules := []supervisor.Module{}
-	if r.cfg.GitHub.Configured() {
-		githubModule, err := github.NewModule(
-			r.cfg.GitHub,
-			github.WithLogger(r.logger.With("component", "module", "module", "github")),
-			github.WithToolRegistrar(toolRegistry),
-		)
+	if r.cfg.GitHub.Enabled {
+		githubCloser, err := githubtools.Register(ctx, r.cfg.GitHub, toolRegistry)
 		if err != nil {
 			return nil, err
 		}
-		modules = append(modules, githubModule)
+		r.githubCloser = githubCloser
 	}
 
 	loop := agent.NewLoop(completer,
@@ -225,11 +238,20 @@ func (r *Runtime) initSupervisor(modules []supervisor.Module) error {
 }
 
 func (r *Runtime) close(ctx context.Context) {
-	if r.db == nil {
-		return
+	if r.githubCloser != nil {
+		if err := r.githubCloser.Close(); err != nil {
+			r.logger.ErrorContext(ctx, "failed to close github mcp client", "err", err)
+		}
 	}
-	if err := r.db.Close(); err != nil {
-		r.logger.ErrorContext(ctx, "failed to close sqlite database", "err", err)
+	if r.db != nil {
+		if err := r.db.Close(); err != nil {
+			r.logger.ErrorContext(ctx, "failed to close sqlite database", "err", err)
+		}
+	}
+	if r.tracing != nil {
+		if err := r.tracing.Shutdown(ctx); err != nil {
+			r.logger.ErrorContext(ctx, "failed to shut down tracing", "err", err)
+		}
 	}
 }
 
