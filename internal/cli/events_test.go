@@ -9,6 +9,7 @@ import (
 
 	"github.com/doron-cohen/klee"
 	"github.com/doron-cohen/klee/kleetest"
+	appconfig "github.com/iamhectordev/hector/internal/app"
 	"github.com/iamhectordev/hector/internal/cli"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -115,8 +116,8 @@ func runCLI(t *testing.T, args ...string) *kleetest.Result {
 	t.Setenv("SLACK_APP_TOKEN", "test")
 	t.Setenv("SLACK_BOT_TOKEN", "test")
 
-	app := klee.New[cli.Config]("hector", "test", cli.Commands())
-	require.NoError(t, app.LoadConfig(klee.ConfigOptions[cli.Config]{
+	app := klee.New[appconfig.Config]("hector", "test", cli.Commands())
+	require.NoError(t, app.LoadConfig(klee.ConfigOptions[appconfig.Config]{
 		FlagArgs: append([]string{"hector"}, args...),
 	}))
 	return kleetest.Run(t, app, args...)

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/doron-cohen/klee"
+	appconfig "github.com/iamhectordev/hector/internal/app"
 	"github.com/iamhectordev/hector/internal/cli"
 	"github.com/iamhectordev/hector/pkg/slackmock"
 	"github.com/slack-go/slack/slackevents"
@@ -38,8 +39,8 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	t.Setenv("TAVILY_API_URL", "https://example.com")
 
 	// 3. Init klee app
-	app := klee.New[cli.Config]("hector", "test", cli.Commands())
-	require.NoError(t, app.LoadConfig(klee.ConfigOptions[cli.Config]{
+	app := klee.New[appconfig.Config]("hector", "test", cli.Commands())
+	require.NoError(t, app.LoadConfig(klee.ConfigOptions[appconfig.Config]{
 		FlagArgs: []string{"hector", "serve"},
 	}))
 
