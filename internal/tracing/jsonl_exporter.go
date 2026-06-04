@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,9 @@ type eventRecord struct {
 
 // NewJSONLExporter opens path for append-only JSONL span export.
 func NewJSONLExporter(path string) (*JSONLExporter, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("tracing: create jsonl exporter parent directory: %w", err)
+	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("tracing: open jsonl exporter: %w", err)

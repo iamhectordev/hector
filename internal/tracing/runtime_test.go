@@ -79,19 +79,6 @@ func TestSetupExportsJSONLSpanRecords(t *testing.T) {
 	require.Equal(t, "retry", lines[0]["events"].([]any)[0].(map[string]any)["name"])
 }
 
-func TestSetupRejectsJSONLWithoutPath(t *testing.T) {
-	_, err := tracing.Setup(t.Context(), tracing.Config{
-		Enabled:     true,
-		ServiceName: "hector",
-		SampleRatio: 1,
-		Exporter: tracing.ExporterConfig{
-			Type: tracing.ExporterJSONL,
-		},
-	})
-	require.Error(t, err)
-	require.ErrorContains(t, err, "path is required")
-}
-
 func TestSetupExportsTraceTreeIDs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "traces.jsonl")
 	runtime, err := tracing.Setup(t.Context(), tracing.Config{

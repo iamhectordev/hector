@@ -3,12 +3,20 @@ package tracing
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 
+	"github.com/doron-cohen/klee/xdg"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.38.0"
+)
+
+const (
+	appName                = "hector"
+	defaultJSONLTracesName = "traces.jsonl"
 )
 
 // Runtime owns process tracing lifecycle.
@@ -80,7 +88,18 @@ func normalizeConfig(cfg Config) Config {
 	if cfg.Exporter.Type == "" {
 		cfg.Exporter.Type = ExporterNone
 	}
+	if cfg.Exporter.Type == ExporterJSONL {
+		cfg.Exporter.Path = resolveJSONLPath(cfg.Exporter.Path)
+	}
 	return cfg
+}
+
+func resolveJSONLPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path != "" {
+		return path
+	}
+	return filepath.Join(xdg.New(appName).DataHome(), defaultJSONLTracesName)
 }
 
 func validateConfig(cfg Config) error {
@@ -91,9 +110,6 @@ func validateConfig(cfg Config) error {
 	case ExporterNone:
 		return nil
 	case ExporterJSONL:
-		if cfg.Exporter.Path == "" {
-			return fmt.Errorf("tracing: jsonl exporter path is required")
-		}
 		return nil
 	default:
 		return fmt.Errorf("tracing: unsupported exporter type %q", cfg.Exporter.Type)
