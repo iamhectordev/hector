@@ -18,6 +18,7 @@ import (
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
+	memorysqlite "github.com/iamhectordev/hector/pkg/memory/sqlite"
 	"github.com/iamhectordev/hector/pkg/safehttp"
 	sessionsqlite "github.com/iamhectordev/hector/pkg/session/sqlite"
 	"github.com/iamhectordev/hector/pkg/supervisor"
@@ -125,7 +126,7 @@ func (r *Runtime) initDatabase(ctx context.Context) error {
 	}
 	r.db = db
 
-	if err := dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations(), sessionsqlite.Migrations()); err != nil {
+	if err := dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations(), sessionsqlite.Migrations(), memorysqlite.Migrations()); err != nil {
 		r.logger.ErrorContext(ctx, "failed to migrate sqlite database", "err", err)
 		return fmt.Errorf("sqlite migrations: %w", err)
 	}
@@ -179,7 +180,11 @@ func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.
 	if err != nil {
 		return nil, nil, err
 	}
-	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow, webFetch, webSearch)
+	memRecall, err := tools.NewMemRecall(memorysqlite.NewStore(r.db))
+	if err != nil {
+		return nil, nil, err
+	}
+	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow, webFetch, webSearch, memRecall)
 	if err != nil {
 		return nil, nil, err
 	}
