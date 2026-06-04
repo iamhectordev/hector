@@ -1,11 +1,11 @@
-package slackmock_test
+package mock_test
 
 import (
 	"context"
 	"testing"
 	"time"
 
-	"github.com/iamhectordev/hector/pkg/slackmock"
+	"github.com/iamhectordev/hector/internal/slack/mock"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -13,7 +13,7 @@ import (
 )
 
 func TestPush_ErrorWhenNoClientConnected(t *testing.T) {
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 
 	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
 	defer cancel()
@@ -29,7 +29,7 @@ func TestPush_ErrorWhenNoClientConnected(t *testing.T) {
 }
 
 func TestPush_DeliveredToConnectedClient(t *testing.T) {
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 
 	client := socketmode.New(
 		slack.New(
@@ -78,7 +78,7 @@ func TestPush_DeliveredToConnectedClient(t *testing.T) {
 }
 
 func TestExpect_CapturesAPICall(t *testing.T) {
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 
 	expect := srv.Expect("chat.postMessage")
 
@@ -96,7 +96,7 @@ func TestExpect_CapturesAPICall(t *testing.T) {
 }
 
 func TestExpect_AssertNotCalled(t *testing.T) {
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	expect := srv.Expect("chat.postMessage")
 	expect.AssertNotCalled(t, 50*time.Millisecond)
 }

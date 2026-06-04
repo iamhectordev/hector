@@ -10,7 +10,8 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-func messageReceivedData(now time.Time, e *slackevents.MessageEvent) (MessageReceivedData, bool, error) {
+// ParseReceivedEvent converts a Slack message event into MessageReceivedData.
+func ParseReceivedEvent(now time.Time, e *slackevents.MessageEvent) (MessageReceivedData, bool, error) {
 	if e == nil {
 		return MessageReceivedData{}, false, fmt.Errorf("slack: message event cannot be nil")
 	}
@@ -30,6 +31,39 @@ func messageReceivedData(now time.Time, e *slackevents.MessageEvent) (MessageRec
 		ThreadTS:   threadTS,
 		Sender:     Sender{ID: e.User},
 		Text:       e.Text,
+		SentAt:     sentAt,
+		ReceivedAt: now,
+	}
+	data.Forwards = detectForwards(e, now)
+	return data, true, nil
+}
+
+// ParseChangedEvent converts a message_changed event into MessageReceivedData.
+func ParseChangedEvent(now time.Time, e *slackevents.MessageEvent) (MessageReceivedData, bool, error) {
+	if e == nil {
+		return MessageReceivedData{}, false, fmt.Errorf("slack: message event cannot be nil")
+	}
+
+	if e.Message == nil {
+		return MessageReceivedData{}, false, fmt.Errorf("slack: message_changed has no inner message")
+	}
+
+	sentAt, err := parseSlackTimestamp(e.Message.Timestamp)
+	if err != nil {
+		return MessageReceivedData{}, false, fmt.Errorf("slack: parse message_changed timestamp: %w", err)
+	}
+
+	threadTS := e.Message.ThreadTimestamp
+	if threadTS == "" {
+		threadTS = e.Message.Timestamp
+	}
+
+	data := MessageReceivedData{
+		TS:         e.Message.Timestamp,
+		Channel:    Channel{ID: e.Channel},
+		ThreadTS:   threadTS,
+		Sender:     Sender{ID: e.Message.User},
+		Text:       e.Message.Text,
 		SentAt:     sentAt,
 		ReceivedAt: now,
 	}
@@ -62,38 +96,6 @@ func detectForwards(e *slackevents.MessageEvent, now time.Time) []MessageReceive
 		})
 	}
 	return forwards
-}
-
-func messageChangedData(now time.Time, e *slackevents.MessageEvent) (MessageReceivedData, bool, error) {
-	if e == nil {
-		return MessageReceivedData{}, false, fmt.Errorf("slack: message event cannot be nil")
-	}
-
-	if e.Message == nil {
-		return MessageReceivedData{}, false, fmt.Errorf("slack: message_changed has no inner message")
-	}
-
-	sentAt, err := parseSlackTimestamp(e.Message.Timestamp)
-	if err != nil {
-		return MessageReceivedData{}, false, fmt.Errorf("slack: parse message_changed timestamp: %w", err)
-	}
-
-	threadTS := e.Message.ThreadTimestamp
-	if threadTS == "" {
-		threadTS = e.Message.Timestamp
-	}
-
-	data := MessageReceivedData{
-		TS:         e.Message.Timestamp,
-		Channel:    Channel{ID: e.Channel},
-		ThreadTS:   threadTS,
-		Sender:     Sender{ID: e.Message.User},
-		Text:       e.Message.Text,
-		SentAt:     sentAt,
-		ReceivedAt: now,
-	}
-	data.Forwards = detectForwards(e, now)
-	return data, true, nil
 }
 
 func parseForwardChannelID(fromURL string) (string, bool) {

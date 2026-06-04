@@ -11,24 +11,21 @@ import (
 	"github.com/iamhectordev/hector/pkg/session"
 )
 
-type slackReplier interface {
+// Replier can post messages to Slack channels.
+type Replier interface {
 	PostMessageContext(ctx context.Context, channelID string, options ...slackgo.MsgOption) (string, string, error)
 }
 
 // ReplyHandler implements comms.ReplyHandler for the Slack surface.
 type ReplyHandler struct {
-	replier slackReplier
+	replier func() Replier
 }
 
-// PostMessageContext forwards to the API client, satisfying slackReplier.
-// The module is used as a lazy proxy so ReplyHandler can be constructed before Init.
-func (m *Module) PostMessageContext(ctx context.Context, channelID string, options ...slackgo.MsgOption) (string, string, error) {
-	return m.api.PostMessageContext(ctx, channelID, options...)
+// NewReplyHandler returns a ReplyHandler that resolves the Replier lazily via fn.
+// Safe to call before the Slack client is initialised — fn is called at Reply time.
+func NewReplyHandler(fn func() Replier) *ReplyHandler {
+	return &ReplyHandler{replier: fn}
 }
-
-// NewReplyHandler returns a ReplyHandler backed by this module.
-// Safe to call before Init — the module proxies to m.api at call time.
-func (m *Module) NewReplyHandler() *ReplyHandler { return &ReplyHandler{replier: m} }
 
 func (h *ReplyHandler) Scheme() string { return "slack" }
 
@@ -41,7 +38,7 @@ func (h *ReplyHandler) Reply(ctx context.Context, uri *url.URL, text string) err
 	if threadTS != "" {
 		opts = append(opts, slackgo.MsgOptionTS(threadTS))
 	}
-	_, _, err = h.replier.PostMessageContext(ctx, channelID, opts...)
+	_, _, err = h.replier().PostMessageContext(ctx, channelID, opts...)
 	return err
 }
 

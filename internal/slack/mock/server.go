@@ -1,4 +1,4 @@
-package slackmock
+package mock
 
 import (
 	"context"

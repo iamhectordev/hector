@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
@@ -15,7 +16,7 @@ import (
 type ModuleOption func(*Module)
 
 // WithEventLogger sets the event logger for raw Slack events.
-func WithEventLogger(logger EventLogger) ModuleOption {
+func WithEventLogger(logger islack.EventLogger) ModuleOption {
 	return func(m *Module) {
 		m.eventLogger = logger
 	}
@@ -31,17 +32,17 @@ type Module struct {
 	api         *slackgo.Client
 	client      *socketmode.Client
 	botUserID   string
-	eventLogger EventLogger
+	eventLogger islack.EventLogger
 }
 
 func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module, error) {
 	if err := validate.Struct(cfg); err != nil {
 		return nil, fmt.Errorf("slack: invalid config: %w", err)
 	}
-	var eventLogger EventLogger = discardLogger{}
+	var eventLogger islack.EventLogger = islack.NewDiscardEventLogger()
 	if cfg.EventLog.Enabled {
 		var err error
-		eventLogger, err = NewFileEventLogger(cfg.EventLog)
+		eventLogger, err = islack.NewFileEventLogger(cfg.EventLog)
 		if err != nil {
 			return nil, err
 		}
@@ -90,6 +91,12 @@ func (m *Module) Start(ctx context.Context) error {
 
 func (m *Module) Stop(context.Context) error {
 	return m.eventLogger.Close()
+}
+
+// NewReplyHandler returns a ReplyHandler backed by this module's API client.
+// Safe to call before Init — the client is resolved lazily at Reply time.
+func (m *Module) NewReplyHandler() *islack.ReplyHandler {
+	return islack.NewReplyHandler(func() islack.Replier { return m.api })
 }
 
 func (m *Module) run(ctx context.Context, client *socketmode.Client) error {

@@ -68,7 +68,7 @@ func TestMessageReceivedData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok, err := messageReceivedData(now, tt.in)
+			got, ok, err := ParseReceivedEvent(now, tt.in)
 
 			require.NoError(t, err)
 			require.Equal(t, tt.ok, ok)
@@ -85,7 +85,7 @@ func TestMessageReceivedData_ForwardsFromAttachments(t *testing.T) {
 	now := time.Date(2026, 5, 8, 20, 0, 0, 0, time.UTC)
 	fwdSentAt := time.Unix(1355517522, 1000).UTC()
 
-	got, ok, err := messageReceivedData(now, &slackevents.MessageEvent{
+	got, ok, err := ParseReceivedEvent(now, &slackevents.MessageEvent{
 		Channel:     "D024BE91L",
 		User:        "U2147483697",
 		Text:        "what do you think?",
@@ -121,7 +121,7 @@ func TestMessageReceivedData_ForwardsFromAttachments(t *testing.T) {
 func TestMessageReceivedData_NoForwardsWhenNoMessage(t *testing.T) {
 	t.Parallel()
 
-	got, ok, err := messageReceivedData(time.Now(), &slackevents.MessageEvent{
+	got, ok, err := ParseReceivedEvent(time.Now(), &slackevents.MessageEvent{
 		Channel:     "D024BE91L",
 		User:        "U2147483697",
 		Text:        "hello",
@@ -137,7 +137,7 @@ func TestMessageReceivedData_NoForwardsWhenNoMessage(t *testing.T) {
 func TestMessageReceivedData_NoForwardsWhenAttachmentMissingAuthorID(t *testing.T) {
 	t.Parallel()
 
-	got, ok, err := messageReceivedData(time.Now(), &slackevents.MessageEvent{
+	got, ok, err := ParseReceivedEvent(time.Now(), &slackevents.MessageEvent{
 		Channel:     "D024BE91L",
 		User:        "U2147483697",
 		Text:        "check this out",
@@ -237,7 +237,7 @@ func TestMessageChangedData(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, ok, err := messageChangedData(now, tt.in)
+			got, ok, err := ParseChangedEvent(now, tt.in)
 			if tt.ok {
 				require.NoError(t, err)
 				require.True(t, ok)
@@ -256,7 +256,7 @@ func TestMessageChangedData_ForwardsFromAttachments(t *testing.T) {
 	now := time.Date(2026, 5, 8, 20, 0, 0, 0, time.UTC)
 	fwdSentAt := time.Unix(1355517522, 1000).UTC()
 
-	got, ok, err := messageChangedData(now, &slackevents.MessageEvent{
+	got, ok, err := ParseChangedEvent(now, &slackevents.MessageEvent{
 		SubType:     "message_changed",
 		Channel:     "D024BE91L",
 		TimeStamp:   "1355517523.000005",
@@ -294,7 +294,7 @@ func TestMessageChangedData_ForwardsFromAttachments(t *testing.T) {
 func TestMessageReceivedData_BadTimestampReturnsError(t *testing.T) {
 	t.Parallel()
 
-	_, ok, err := messageReceivedData(time.Now(), &slackevents.MessageEvent{
+	_, ok, err := ParseReceivedEvent(time.Now(), &slackevents.MessageEvent{
 		TimeStamp:   "not-a-timestamp",
 		ChannelType: slackevents.ChannelTypeIM,
 	})

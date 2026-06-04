@@ -9,6 +9,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
+	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/pkg/session"
 )
 
@@ -74,7 +75,7 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 		m.log(ctx).DebugContext(ctx, "slack message ignored: bot self-message", "user", e.User)
 		return nil
 	}
-	data, ok, err := messageReceivedData(time.Now().UTC(), e)
+	data, ok, err := islack.ParseReceivedEvent(time.Now().UTC(), e)
 	if err != nil {
 		return err
 	}
@@ -82,20 +83,20 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 		return nil
 	}
 
-	m.enricher().Enrich(ctx, &data, e)
+	islack.NewMessageEnricher(m.api, m.botUserID).Enrich(ctx, &data, e)
 
 	data.Channel.Type = channelTypeFromSlack(e.ChannelType)
 
-	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(data.Channel.ID, data.ThreadTS)})
+	ctx = session.With(ctx, session.Session{SourceURI: islack.NewOriginURI(data.Channel.ID, data.ThreadTS)})
 	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
-	if err := m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
+	if err := m.bus.Record(ctx, islack.MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)
 	}
 	return nil
 }
 
 func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.MessageEvent) error {
-	data, ok, err := messageChangedData(time.Now().UTC(), e)
+	data, ok, err := islack.ParseChangedEvent(time.Now().UTC(), e)
 	if err != nil {
 		return err
 	}
@@ -103,11 +104,11 @@ func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.Messag
 		return nil
 	}
 
-	m.enricher().Enrich(ctx, &data, e)
+	islack.NewMessageEnricher(m.api, m.botUserID).Enrich(ctx, &data, e)
 
 	data.Channel.Type = channelTypeFromSlack(e.ChannelType)
 
-	updatedData := MessageUpdatedData{
+	updatedData := islack.MessageUpdatedData{
 		Channel:    data.Channel,
 		ThreadTS:   data.ThreadTS,
 		TS:         data.TS,
@@ -122,32 +123,25 @@ func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.Messag
 		UpdatedAt:  time.Now().UTC(),
 	}
 
-	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(updatedData.Channel.ID, updatedData.ThreadTS)})
-	if err := m.bus.Record(ctx, MessageUpdated.New(updatedData)); err != nil {
+	ctx = session.With(ctx, session.Session{SourceURI: islack.NewOriginURI(updatedData.Channel.ID, updatedData.ThreadTS)})
+	if err := m.bus.Record(ctx, islack.MessageUpdated.New(updatedData)); err != nil {
 		return fmt.Errorf("failed to record message updated: %w", err)
 	}
 	return nil
 }
 
-func (m *Module) enricher() messageEnricher {
-	return messageEnricher{
-		api:       m.api,
-		botUserID: m.botUserID,
-	}
-}
-
-func channelTypeFromSlack(channelType string) ChannelType {
+func channelTypeFromSlack(channelType string) islack.ChannelType {
 	switch channelType {
 	case "im":
-		return ChannelTypeDM
+		return islack.ChannelTypeDM
 	case "mpim":
-		return ChannelTypeGroupDM
+		return islack.ChannelTypeGroupDM
 	case "channel":
-		return ChannelTypeChannel
+		return islack.ChannelTypeChannel
 	case "group":
-		return ChannelTypePrivate
+		return islack.ChannelTypePrivate
 	default:
-		return ChannelType(channelType)
+		return islack.ChannelType(channelType)
 	}
 }
 

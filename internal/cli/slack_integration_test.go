@@ -14,7 +14,7 @@ import (
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
-	"github.com/iamhectordev/hector/pkg/slackmock"
+	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	slackgo "github.com/slack-go/slack"

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/iamhectordev/hector/modules/slack"
+	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
@@ -52,11 +52,11 @@ func (m *Module) Init(ctx context.Context) error {
 		m.log(ctx).ErrorContext(ctx, "failed to register tui listener", "err", err)
 		return err
 	}
-	if err := waffle.On(m.bus, slack.MessageReceived).Handle("agent.slack", m.onSlackMessage); err != nil {
+	if err := waffle.On(m.bus, islack.MessageReceived).Handle("agent.slack", m.onSlackMessage); err != nil {
 		m.log(ctx).ErrorContext(ctx, "failed to register slack listener", "err", err)
 		return err
 	}
-	if err := waffle.On(m.bus, slack.MessageUpdated).Handle("agent.slack.update", m.onSlackMessageUpdated); err != nil {
+	if err := waffle.On(m.bus, islack.MessageUpdated).Handle("agent.slack.update", m.onSlackMessageUpdated); err != nil {
 		m.log(ctx).ErrorContext(ctx, "failed to register slack update listener", "err", err)
 		return err
 	}

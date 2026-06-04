@@ -90,7 +90,7 @@ func TestMessageEnricher_EnrichFiles(t *testing.T) {
 			t.Parallel()
 
 			var data MessageReceivedData
-			messageEnricher{api: tt.api}.enrichFiles(t.Context(), &data, &slackevents.MessageEvent{
+			MessageEnricher{api: tt.api}.enrichFiles(t.Context(), &data, &slackevents.MessageEvent{
 				Message: &slackgo.Msg{Files: []slackgo.File{tt.file}},
 			})
 

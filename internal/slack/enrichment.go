@@ -10,7 +10,8 @@ import (
 	"github.com/sourcegraph/conc/pool"
 )
 
-type slackAPI interface {
+// SlackAPI is the subset of the Slack client used for message enrichment.
+type SlackAPI interface {
 	GetUserInfoContext(ctx context.Context, user string) (*slackgo.User, error)
 	GetConversationInfoContext(ctx context.Context, input *slackgo.GetConversationInfoInput) (*slackgo.Channel, error)
 	GetReactionsContext(ctx context.Context, item slackgo.ItemRef, params slackgo.GetReactionsParameters) (slackgo.ReactedItem, error)
@@ -18,12 +19,18 @@ type slackAPI interface {
 	GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error
 }
 
-type messageEnricher struct {
-	api       slackAPI
+// MessageEnricher enriches MessageReceivedData with user, channel, reaction, and file details.
+type MessageEnricher struct {
+	api       SlackAPI
 	botUserID string
 }
 
-func (e messageEnricher) Enrich(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
+// NewMessageEnricher returns a MessageEnricher backed by the given API client.
+func NewMessageEnricher(api SlackAPI, botUserID string) MessageEnricher {
+	return MessageEnricher{api: api, botUserID: botUserID}
+}
+
+func (e MessageEnricher) Enrich(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
 	p := pool.New()
 	p.Go(func() { e.enrichSender(ctx, data) })
 	p.Go(func() { e.enrichChannel(ctx, data) })
@@ -36,7 +43,7 @@ func (e messageEnricher) Enrich(ctx context.Context, data *MessageReceivedData, 
 	}
 }
 
-func (e messageEnricher) enrichForward(ctx context.Context, data *MessageReceivedData) {
+func (e MessageEnricher) enrichForward(ctx context.Context, data *MessageReceivedData) {
 	p := pool.New()
 	p.Go(func() { e.enrichSender(ctx, data) })
 	p.Go(func() { e.enrichChannel(ctx, data) })
@@ -44,7 +51,7 @@ func (e messageEnricher) enrichForward(ctx context.Context, data *MessageReceive
 	p.Wait()
 }
 
-func (e messageEnricher) enrichSender(ctx context.Context, data *MessageReceivedData) {
+func (e MessageEnricher) enrichSender(ctx context.Context, data *MessageReceivedData) {
 	if data.Sender.ID == "" {
 		return
 	}
@@ -60,7 +67,7 @@ func (e messageEnricher) enrichSender(ctx context.Context, data *MessageReceived
 	data.Sender.Name = name
 }
 
-func (e messageEnricher) enrichChannel(ctx context.Context, data *MessageReceivedData) {
+func (e MessageEnricher) enrichChannel(ctx context.Context, data *MessageReceivedData) {
 	if data.Channel.ID == "" {
 		return
 	}
@@ -77,7 +84,7 @@ func (e messageEnricher) enrichChannel(ctx context.Context, data *MessageReceive
 	data.Channel.MemberCount = channel.NumMembers
 }
 
-func (e messageEnricher) enrichReactions(ctx context.Context, data *MessageReceivedData) {
+func (e MessageEnricher) enrichReactions(ctx context.Context, data *MessageReceivedData) {
 	if data.Channel.ID == "" || data.TS == "" {
 		return
 	}
@@ -94,7 +101,7 @@ func (e messageEnricher) enrichReactions(ctx context.Context, data *MessageRecei
 	data.Reactions = reactionsFromSlack(item, e.botUserID)
 }
 
-func (e messageEnricher) log(context.Context) *slog.Logger {
+func (e MessageEnricher) log(context.Context) *slog.Logger {
 	return slog.Default().With("component", "module", "module", "slack")
 }
 

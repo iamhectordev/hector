@@ -8,8 +8,9 @@ import (
 
 	slackgo "github.com/slack-go/slack"
 
+	islack "github.com/iamhectordev/hector/internal/slack"
+	"github.com/iamhectordev/hector/internal/slack/mock"
 	module "github.com/iamhectordev/hector/modules/slack"
-	"github.com/iamhectordev/hector/pkg/slackmock"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
@@ -18,15 +19,15 @@ import (
 func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 	t.Parallel()
 
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan module.MessageReceivedData, 1)
-	err = waffle.On(bus, module.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageReceivedData]) error {
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -86,7 +87,7 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 	select {
 	case data := <-got:
 		require.Equal(t, "D111", data.Channel.ID)
-		require.Equal(t, module.ChannelTypeDM, data.Channel.Type)
+		require.Equal(t, islack.ChannelTypeDM, data.Channel.Type)
 		require.Equal(t, "dm-test", data.Channel.Name)
 		require.Equal(t, 2, data.Channel.MemberCount)
 		require.Equal(t, "U222", data.Sender.ID)
@@ -103,15 +104,15 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 	t.Parallel()
 
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan module.MessageReceivedData, 1)
-	err = waffle.On(bus, module.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageReceivedData]) error {
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -155,7 +156,7 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, module.ChannelTypeChannel, data.Channel.Type)
+		require.Equal(t, islack.ChannelTypeChannel, data.Channel.Type)
 		require.Equal(t, "public-channel", data.Channel.Name)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
@@ -168,15 +169,15 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 	t.Parallel()
 
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan module.MessageReceivedData, 1)
-	err = waffle.On(bus, module.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageReceivedData]) error {
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -227,7 +228,7 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 	select {
 	case data := <-got:
 		require.Equal(t, "D111", data.Channel.ID)
-		require.Equal(t, module.ChannelTypeDM, data.Channel.Type)
+		require.Equal(t, islack.ChannelTypeDM, data.Channel.Type)
 		require.Equal(t, "", data.Channel.Name)
 		require.Equal(t, 0, data.Channel.MemberCount)
 		require.Equal(t, "U222", data.Sender.ID)
@@ -244,15 +245,15 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 	t.Parallel()
 
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan module.MessageReceivedData, 1)
-	err = waffle.On(bus, module.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageReceivedData]) error {
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -296,7 +297,7 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, module.ChannelTypeGroupDM, data.Channel.Type)
+		require.Equal(t, islack.ChannelTypeGroupDM, data.Channel.Type)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
 	}
@@ -308,15 +309,15 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 	t.Parallel()
 
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan module.MessageReceivedData, 1)
-	err = waffle.On(bus, module.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageReceivedData]) error {
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -360,7 +361,7 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, module.ChannelType("bizarre_type"), data.Channel.Type)
+		require.Equal(t, islack.ChannelType("bizarre_type"), data.Channel.Type)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
 	}
@@ -372,15 +373,15 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 	t.Parallel()
 
-	srv := slackmock.New(t)
+	srv := mock.New(t)
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan module.MessageUpdatedData, 1)
-	err = waffle.On(bus, module.MessageUpdated).Handle("test.capture", func(_ context.Context, e waffle.Event[module.MessageUpdatedData]) error {
+	got := make(chan islack.MessageUpdatedData, 1)
+	err = waffle.On(bus, islack.MessageUpdated).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageUpdatedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -472,7 +473,7 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 		require.Equal(t, "Bob", data.Forwards[0].Sender.Name)
 		require.Equal(t, "Original message", data.Forwards[0].Text)
 		require.Equal(t, "C999", data.Forwards[0].Channel.ID)
-		require.Equal(t, module.ChannelTypeDM, data.Channel.Type)
+		require.Equal(t, islack.ChannelTypeDM, data.Channel.Type)
 		require.NotZero(t, data.UpdatedAt)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message_updated event")

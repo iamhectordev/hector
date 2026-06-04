@@ -36,9 +36,9 @@ type EventLogConfig struct {
 }
 
 type logEntry struct {
-	Timestamp time.Time       `json:"ts"`
+	Timestamp time.Time            `json:"ts"`
 	Type      socketmode.EventType `json:"type"`
-	Payload   json.RawMessage `json:"payload,omitempty"`
+	Payload   json.RawMessage      `json:"payload,omitempty"`
 }
 
 type fileEventLogger struct {
@@ -47,6 +47,7 @@ type fileEventLogger struct {
 	mu  sync.Mutex
 }
 
+// NewFileEventLogger opens or creates the log file at cfg.Path and returns an EventLogger.
 func NewFileEventLogger(cfg EventLogConfig) (EventLogger, error) {
 	path := expandPath(cfg.Path)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -80,6 +81,11 @@ func (l *fileEventLogger) Log(_ context.Context, evt socketmode.Event) error {
 
 func (l *fileEventLogger) Close() error {
 	return l.w.Close()
+}
+
+// NewDiscardEventLogger returns an EventLogger that silently drops all events.
+func NewDiscardEventLogger() EventLogger {
+	return discardLogger{}
 }
 
 type discardLogger struct{}

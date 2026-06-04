@@ -5,7 +5,7 @@ import (
 	"encoding/xml"
 	"time"
 
-	"github.com/iamhectordev/hector/modules/slack"
+	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
@@ -129,21 +129,21 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 	return nil
 }
 
-func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[slack.MessageReceivedData]) error {
+func (m *Module) onSlackMessage(ctx context.Context, e waffle.Event[islack.MessageReceivedData]) error {
 	data := e.Data()
 	msgCtx := newUserMessage(data.Sender, data.Text, data.Reactions, data.Files, data.Images, data.Forwards)
 	return m.processSlackMessage(ctx, e.ID(), e.Type(), "slack message", data.Channel, data.ThreadTS, msgCtx, data.Text, data.Images)
 }
 
-func (m *Module) onSlackMessageUpdated(ctx context.Context, e waffle.Event[slack.MessageUpdatedData]) error {
+func (m *Module) onSlackMessageUpdated(ctx context.Context, e waffle.Event[islack.MessageUpdatedData]) error {
 	data := e.Data()
 	msgCtx := newUserMessage(data.Sender, data.Text, data.Reactions, data.Files, data.Images, data.Forwards)
 	msgCtx.UpdatedAt = data.UpdatedAt.Format(time.RFC3339)
 	return m.processSlackMessage(ctx, e.ID(), e.Type(), "slack message update", data.Channel, data.ThreadTS, msgCtx, data.Text, data.Images)
 }
 
-func (m *Module) processSlackMessage(ctx context.Context, eventID, eventType, logLabel string, channel slack.Channel, threadTS string, msgCtx UserMessage, text string, images []slack.ImageAttachment) error {
-	sourceURI := slack.NewOriginURI(channel.ID, threadTS)
+func (m *Module) processSlackMessage(ctx context.Context, eventID, eventType, logLabel string, channel islack.Channel, threadTS string, msgCtx UserMessage, text string, images []islack.ImageAttachment) error {
+	sourceURI := islack.NewOriginURI(channel.ID, threadTS)
 	ctx = session.With(ctx, session.Session{SourceURI: sourceURI})
 
 	slackCtx := SlackContext{
@@ -182,7 +182,7 @@ func (m *Module) processSlackMessage(ctx context.Context, eventID, eventType, lo
 	return nil
 }
 
-func slackUserMessages(content string, images []slack.ImageAttachment) []*schema.Message {
+func slackUserMessages(content string, images []islack.ImageAttachment) []*schema.Message {
 	parts := slackImageParts(content, images)
 	if len(parts) == 0 {
 		return []*schema.Message{schema.UserMessage(content)}
@@ -190,7 +190,7 @@ func slackUserMessages(content string, images []slack.ImageAttachment) []*schema
 	return []*schema.Message{schema.UserMessageWithParts(content, parts)}
 }
 
-func newUserMessage(sender slack.Sender, text string, reactions slack.Reactions, files []slack.FileAttachment, images []slack.ImageAttachment, forwards []slack.MessageReceivedData) UserMessage {
+func newUserMessage(sender islack.Sender, text string, reactions islack.Reactions, files []islack.FileAttachment, images []islack.ImageAttachment, forwards []islack.MessageReceivedData) UserMessage {
 	fwd := make([]MessageForward, 0, len(forwards))
 	for _, f := range forwards {
 		fwd = append(fwd, MessageForward{
@@ -215,7 +215,8 @@ func newUserMessage(sender slack.Sender, text string, reactions slack.Reactions,
 		Forwards:   fwd,
 	}
 }
-func slackImageParts(content string, images []slack.ImageAttachment) []schema.MessagePart {
+
+func slackImageParts(content string, images []islack.ImageAttachment) []schema.MessagePart {
 	var parts []schema.MessagePart
 	for _, image := range images {
 		if image.Base64Data == "" {
@@ -232,7 +233,7 @@ func slackImageParts(content string, images []slack.ImageAttachment) []schema.Me
 	return parts
 }
 
-func slackFilesXML(files []slack.FileAttachment) []MessageFile {
+func slackFilesXML(files []islack.FileAttachment) []MessageFile {
 	if len(files) == 0 {
 		return nil
 	}
@@ -251,7 +252,7 @@ func slackFilesXML(files []slack.FileAttachment) []MessageFile {
 	return out
 }
 
-func slackImagesXML(images []slack.ImageAttachment) []MessageImage {
+func slackImagesXML(images []islack.ImageAttachment) []MessageImage {
 	if len(images) == 0 {
 		return nil
 	}
@@ -268,7 +269,7 @@ func slackImagesXML(images []slack.ImageAttachment) []MessageImage {
 	return out
 }
 
-func slackReactionsXML(reactions slack.Reactions) *MessageReactions {
+func slackReactionsXML(reactions islack.Reactions) *MessageReactions {
 	if reactions.Unavailable != nil {
 		return &MessageReactions{
 			Status: "unavailable",

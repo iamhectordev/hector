@@ -9,7 +9,7 @@ import (
 	"github.com/doron-cohen/klee"
 	appconfig "github.com/iamhectordev/hector/internal/app"
 	"github.com/iamhectordev/hector/internal/cli"
-	"github.com/iamhectordev/hector/pkg/slackmock"
+	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
 )

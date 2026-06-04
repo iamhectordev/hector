@@ -9,7 +9,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
-func (e messageEnricher) enrichFiles(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
+func (e MessageEnricher) enrichFiles(ctx context.Context, data *MessageReceivedData, event *slackevents.MessageEvent) {
 	if event.Message == nil || len(event.Message.Files) == 0 {
 		return
 	}
@@ -36,7 +36,7 @@ func (e messageEnricher) enrichFiles(ctx context.Context, data *MessageReceivedD
 	data.Images = images
 }
 
-func (e messageEnricher) enrichFile(ctx context.Context, file slackgo.File) FileAttachment {
+func (e MessageEnricher) enrichFile(ctx context.Context, file slackgo.File) FileAttachment {
 	attachment := FileAttachment{
 		ID:          file.ID,
 		Name:        file.Name,
@@ -78,7 +78,7 @@ func (e messageEnricher) enrichFile(ctx context.Context, file slackgo.File) File
 	return attachment
 }
 
-func (e messageEnricher) enrichImage(ctx context.Context, file slackgo.File) ImageAttachment {
+func (e MessageEnricher) enrichImage(ctx context.Context, file slackgo.File) ImageAttachment {
 	attachment := ImageAttachment{
 		ID:          file.ID,
 		Name:        file.Name,
