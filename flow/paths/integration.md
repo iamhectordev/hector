@@ -34,5 +34,29 @@ func (c *Client) Verify(ctx context.Context) error {
 }
 ```
 
+## Registering tools
+
+Integrations that expose agent tools provide a `Register` function in `modules/tools/<name>/`:
+
+```go
+// Register initializes the client, registers tools, and returns a closer
+// for any long-lived connections (e.g. MCP). Caller is responsible for
+// checking Enabled before calling.
+func Register(ctx context.Context, cfg Config, registry *tools.Registry) (io.Closer, error)
+```
+
+The caller gates on `Enabled`:
+
+```go
+if cfg.GitHub.Enabled {
+    closer, err := githubtools.Register(ctx, cfg.GitHub, registry)
+    ...
+}
+```
+
+`Config.Enabled` is the single explicit gate — do not infer enablement from non-zero fields.
+Required fields use `validate:"required_if=Enabled true"` so validation only fires when active.
+
 ## Example
-- `modules/github` owns GitHub App installation config, validates it in `NewClient`, initializes a REST client, and verifies access with one read-only request.
+- `internal/github` owns GitHub App installation config, validates it in `NewClient`, initializes a REST client, and verifies access with one read-only request.
+- `modules/tools/github` provides `Register` which wires the client into the tool registry and manages the MCP client lifecycle.

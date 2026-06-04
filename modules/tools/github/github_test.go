@@ -2,28 +2,26 @@ package github_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
-	"github.com/iamhectordev/hector/internal/mcp"
-	hectorgithub "github.com/iamhectordev/hector/modules/github"
+	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/iamhectordev/hector/modules/tools"
+	githubtools "github.com/iamhectordev/hector/modules/tools/github"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
-func TestConfigConfigured(t *testing.T) {
-	t.Parallel()
-
-	require.False(t, hectorgithub.Config{}.Configured())
-	require.True(t, hectorgithub.Config{AppID: 123}.Configured())
-}
-
-func TestModuleInitRegistersMCPTools(t *testing.T) {
+func TestRegisterAddsToolsToRegistry(t *testing.T) {
 	t.Parallel()
 
 	privateKeyPath := writeTestPrivateKey(t)
@@ -43,24 +41,24 @@ func TestModuleInitRegistersMCPTools(t *testing.T) {
 	require.NoError(t, err)
 	executable, err := os.Executable()
 	require.NoError(t, err)
-	module, err := hectorgithub.NewModule(hectorgithub.Config{
+
+	closer, err := githubtools.Register(t.Context(), gh.Config{
+		Enabled:        true,
 		AppID:          123,
 		InstallationID: 456,
 		PrivateKeyPath: privateKeyPath,
 		APIURL:         server.URL,
-		MCP: hectorgithub.MCPConfig{
-			Transport:    mcp.TransportStdio,
+		MCP: gh.MCPConfig{
+			Transport:    "stdio",
 			StdioCommand: executable,
 			StdioArgs:    []string{"-test.run=TestGitHubFakeMCPServer", "--"},
 			StdioEnv:     map[string]string{"HECTOR_GITHUB_MCP_TEST_SERVER": "1"},
 		},
-	}, hectorgithub.WithToolRegistrar(registry))
+	}, registry)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		require.NoError(t, module.Stop(t.Context()))
+		require.NoError(t, closer.Close())
 	})
-
-	require.NoError(t, module.Init(t.Context()))
 
 	defs := registry.Definitions()
 	names := make([]string, 0, len(defs))
@@ -111,4 +109,17 @@ type listReposInput struct {
 
 type listReposOutput struct {
 	OK bool `json:"ok"`
+}
+
+func writeTestPrivateKey(t *testing.T) string {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	der := x509.MarshalPKCS1PrivateKey(key)
+	block := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}
+	path := filepath.Join(t.TempDir(), "github-app.pem")
+	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(block), 0o600))
+	return path
 }

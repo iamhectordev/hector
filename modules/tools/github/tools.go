@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"strings"
 
+	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/iamhectordev/hector/modules/tools"
 )
 
 type toolsClient interface {
-	GetIssueWithBlocking(context.Context, Repository, int) (IssueWithBlocking, error)
-	CreateMilestone(context.Context, Repository, string, ...MilestoneOption) (Milestone, error)
-	ListMilestones(context.Context, Repository, ...ListMilestonesOption) ([]Milestone, error)
-	UpdateMilestone(context.Context, Repository, int, ...MilestoneOption) (Milestone, error)
-	AddBlockedBy(context.Context, Repository, int, int) (IssueWithBlocking, error)
-	RemoveBlockedBy(context.Context, Repository, int, int) (IssueWithBlocking, error)
+	GetIssueWithBlocking(context.Context, gh.Repository, int) (gh.IssueWithBlocking, error)
+	CreateMilestone(context.Context, gh.Repository, string, ...gh.MilestoneOption) (gh.Milestone, error)
+	ListMilestones(context.Context, gh.Repository, ...gh.ListMilestonesOption) ([]gh.Milestone, error)
+	UpdateMilestone(context.Context, gh.Repository, int, ...gh.MilestoneOption) (gh.Milestone, error)
+	AddBlockedBy(context.Context, gh.Repository, int, int) (gh.IssueWithBlocking, error)
+	RemoveBlockedBy(context.Context, gh.Repository, int, int) (gh.IssueWithBlocking, error)
 }
 
 type getIssueInput struct {
@@ -46,133 +47,109 @@ type blockedByRelationshipInput struct {
 	BlockedIssueNumber  int    `json:"blocked_issue_number" jsonschema:"issue number that is blocked"`
 }
 
-// NewGetIssueTool returns an agent-facing tool that fetches an issue with dependency context.
 func NewGetIssueTool(client toolsClient) (tools.Tool, error) {
-	if client == nil {
-		return nil, fmt.Errorf("github: issue client is required")
-	}
-	return tools.New[getIssueInput, IssueWithBlocking](
+	return tools.New(
 		"get_issue",
 		"Returns one GitHub issue with blocked_by and blocks arrays. Requires repo as owner/name.",
-		func(ctx context.Context, in getIssueInput) (IssueWithBlocking, error) {
+		func(ctx context.Context, in getIssueInput) (gh.IssueWithBlocking, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return IssueWithBlocking{}, err
+				return gh.IssueWithBlocking{}, err
 			}
 			if in.IssueNumber <= 0 {
-				return IssueWithBlocking{}, fmt.Errorf("github: issue_number must be positive")
+				return gh.IssueWithBlocking{}, fmt.Errorf("github: issue_number must be positive")
 			}
 			return client.GetIssueWithBlocking(ctx, repo, in.IssueNumber)
 		},
 	)
 }
 
-// NewCreateMilestoneTool returns an agent-facing tool that creates a GitHub milestone.
 func NewCreateMilestoneTool(client toolsClient) (tools.Tool, error) {
-	if client == nil {
-		return nil, fmt.Errorf("github: milestone client is required")
-	}
-	return tools.New[createMilestoneInput, Milestone](
+	return tools.New(
 		"create_milestone",
 		"Creates a GitHub milestone and returns the milestone JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in createMilestoneInput) (Milestone, error) {
+		func(ctx context.Context, in createMilestoneInput) (gh.Milestone, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return Milestone{}, err
+				return gh.Milestone{}, err
 			}
-			opts := []MilestoneOption{}
+			opts := []gh.MilestoneOption{}
 			if in.Description != nil {
-				opts = append(opts, WithMilestoneDescription(*in.Description))
+				opts = append(opts, gh.WithMilestoneDescription(*in.Description))
 			}
 			return client.CreateMilestone(ctx, repo, in.Title, opts...)
 		},
 	)
 }
 
-// NewListMilestonesTool returns an agent-facing tool that lists GitHub milestones.
 func NewListMilestonesTool(client toolsClient) (tools.Tool, error) {
-	if client == nil {
-		return nil, fmt.Errorf("github: milestone client is required")
-	}
-	return tools.New[listMilestonesInput, []Milestone](
+	return tools.New(
 		"list_milestones",
 		"Returns GitHub milestones for a repository. Requires repo as owner/name; state may be open, closed, or all.",
-		func(ctx context.Context, in listMilestonesInput) ([]Milestone, error) {
+		func(ctx context.Context, in listMilestonesInput) ([]gh.Milestone, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
 				return nil, err
 			}
-			opts := []ListMilestonesOption{}
+			opts := []gh.ListMilestonesOption{}
 			if in.State != "" {
-				opts = append(opts, WithMilestoneState(in.State))
+				opts = append(opts, gh.WithMilestoneState(in.State))
 			}
 			return client.ListMilestones(ctx, repo, opts...)
 		},
 	)
 }
 
-// NewUpdateMilestoneTool returns an agent-facing tool that updates a GitHub milestone.
 func NewUpdateMilestoneTool(client toolsClient) (tools.Tool, error) {
-	if client == nil {
-		return nil, fmt.Errorf("github: milestone client is required")
-	}
-	return tools.New[updateMilestoneInput, Milestone](
+	return tools.New(
 		"update_milestone",
 		"Updates a GitHub milestone and returns the milestone JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in updateMilestoneInput) (Milestone, error) {
+		func(ctx context.Context, in updateMilestoneInput) (gh.Milestone, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return Milestone{}, err
+				return gh.Milestone{}, err
 			}
-			opts := []MilestoneOption{}
+			opts := []gh.MilestoneOption{}
 			if in.Title != nil {
-				opts = append(opts, WithMilestoneTitle(*in.Title))
+				opts = append(opts, gh.WithMilestoneTitle(*in.Title))
 			}
 			if in.Description != nil {
-				opts = append(opts, WithMilestoneDescription(*in.Description))
+				opts = append(opts, gh.WithMilestoneDescription(*in.Description))
 			}
 			return client.UpdateMilestone(ctx, repo, in.MilestoneNumber, opts...)
 		},
 	)
 }
 
-// NewCreateBlockedByRelationshipTool returns an agent-facing tool that creates a blocked-by dependency.
 func NewCreateBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) {
-	if client == nil {
-		return nil, fmt.Errorf("github: issue dependency client is required")
-	}
-	return tools.New[blockedByRelationshipInput, IssueWithBlocking](
+	return tools.New(
 		"create_blocked_by_relationship",
 		"Creates a GitHub blocked-by relationship and returns the updated blocked issue JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in blockedByRelationshipInput) (IssueWithBlocking, error) {
+		func(ctx context.Context, in blockedByRelationshipInput) (gh.IssueWithBlocking, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return IssueWithBlocking{}, err
+				return gh.IssueWithBlocking{}, err
 			}
 			return client.AddBlockedBy(ctx, repo, in.BlockingIssueNumber, in.BlockedIssueNumber)
 		},
 	)
 }
 
-// NewRemoveBlockedByRelationshipTool returns an agent-facing tool that removes a blocked-by dependency.
 func NewRemoveBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) {
-	if client == nil {
-		return nil, fmt.Errorf("github: issue dependency client is required")
-	}
-	return tools.New[blockedByRelationshipInput, IssueWithBlocking](
+	return tools.New(
 		"remove_blocked_by_relationship",
 		"Removes a GitHub blocked-by relationship and returns the updated blocked issue JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in blockedByRelationshipInput) (IssueWithBlocking, error) {
+		func(ctx context.Context, in blockedByRelationshipInput) (gh.IssueWithBlocking, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return IssueWithBlocking{}, err
+				return gh.IssueWithBlocking{}, err
 			}
 			return client.RemoveBlockedBy(ctx, repo, in.BlockingIssueNumber, in.BlockedIssueNumber)
 		},
 	)
 }
 
-// NewTools returns all GitHub-native tools exposed to agents.
+// NewTools returns all GitHub tools. Returns an error if client is nil.
 func NewTools(client toolsClient) ([]tools.Tool, error) {
 	if client == nil {
 		return nil, fmt.Errorf("github: tools client is required")
@@ -196,10 +173,10 @@ func NewTools(client toolsClient) ([]tools.Tool, error) {
 	return out, nil
 }
 
-func parseRepository(value string) (Repository, error) {
+func parseRepository(value string) (gh.Repository, error) {
 	owner, name, ok := strings.Cut(value, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return Repository{}, fmt.Errorf("github: repo must be owner/name")
+		return gh.Repository{}, fmt.Errorf("github: repo must be owner/name")
 	}
-	return Repository{Owner: owner, Name: name}, nil
+	return gh.Repository{Owner: owner, Name: name}, nil
 }

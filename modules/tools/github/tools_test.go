@@ -6,14 +6,15 @@ import (
 	"strconv"
 	"testing"
 
-	hectorgithub "github.com/iamhectordev/hector/modules/github"
+	gh "github.com/iamhectordev/hector/internal/github"
+	githubtools "github.com/iamhectordev/hector/modules/tools/github"
 	"github.com/stretchr/testify/require"
 )
 
 func TestGetIssueToolRejectsRepoWithoutOwnerAndName(t *testing.T) {
 	t.Parallel()
 
-	tool, err := hectorgithub.NewGetIssueTool(&githubToolClient{})
+	tool, err := githubtools.NewGetIssueTool(&githubToolClient{})
 	require.NoError(t, err)
 
 	output, err := tool.Run(t.Context(), json.RawMessage(`{"repo":"hector","issue_number":28}`))
@@ -29,17 +30,17 @@ func TestGitHubToolsRunAgainstClient(t *testing.T) {
 	t.Parallel()
 
 	client := &githubToolClient{}
-	getIssue, err := hectorgithub.NewGetIssueTool(client)
+	getIssue, err := githubtools.NewGetIssueTool(client)
 	require.NoError(t, err)
-	createMilestone, err := hectorgithub.NewCreateMilestoneTool(client)
+	createMilestone, err := githubtools.NewCreateMilestoneTool(client)
 	require.NoError(t, err)
-	listMilestones, err := hectorgithub.NewListMilestonesTool(client)
+	listMilestones, err := githubtools.NewListMilestonesTool(client)
 	require.NoError(t, err)
-	updateMilestone, err := hectorgithub.NewUpdateMilestoneTool(client)
+	updateMilestone, err := githubtools.NewUpdateMilestoneTool(client)
 	require.NoError(t, err)
-	addBlockedBy, err := hectorgithub.NewCreateBlockedByRelationshipTool(client)
+	addBlockedBy, err := githubtools.NewCreateBlockedByRelationshipTool(client)
 	require.NoError(t, err)
-	removeBlockedBy, err := hectorgithub.NewRemoveBlockedByRelationshipTool(client)
+	removeBlockedBy, err := githubtools.NewRemoveBlockedByRelationshipTool(client)
 	require.NoError(t, err)
 
 	for _, tc := range []struct {
@@ -88,32 +89,32 @@ type githubToolClient struct {
 	calls []string
 }
 
-func (c *githubToolClient) GetIssueWithBlocking(_ context.Context, repo hectorgithub.Repository, number int) (hectorgithub.IssueWithBlocking, error) {
+func (c *githubToolClient) GetIssueWithBlocking(_ context.Context, repo gh.Repository, number int) (gh.IssueWithBlocking, error) {
 	c.calls = append(c.calls, "get "+repo.Owner+"/"+repo.Name+"#"+strconv.Itoa(number))
-	return hectorgithub.IssueWithBlocking{Issue: hectorgithub.Issue{Number: number, Title: "Issue"}}, nil
+	return gh.IssueWithBlocking{Issue: gh.Issue{Number: number, Title: "Issue"}}, nil
 }
 
-func (c *githubToolClient) CreateMilestone(_ context.Context, repo hectorgithub.Repository, title string, opts ...hectorgithub.MilestoneOption) (hectorgithub.Milestone, error) {
+func (c *githubToolClient) CreateMilestone(_ context.Context, repo gh.Repository, title string, opts ...gh.MilestoneOption) (gh.Milestone, error) {
 	c.calls = append(c.calls, "create milestone "+repo.Owner+"/"+repo.Name+" "+title+" opts:"+strconv.Itoa(len(opts)))
-	return hectorgithub.Milestone{Number: 2, Title: title}, nil
+	return gh.Milestone{Number: 2, Title: title}, nil
 }
 
-func (c *githubToolClient) ListMilestones(_ context.Context, repo hectorgithub.Repository, opts ...hectorgithub.ListMilestonesOption) ([]hectorgithub.Milestone, error) {
+func (c *githubToolClient) ListMilestones(_ context.Context, repo gh.Repository, opts ...gh.ListMilestonesOption) ([]gh.Milestone, error) {
 	c.calls = append(c.calls, "list milestones "+repo.Owner+"/"+repo.Name+" opts:"+strconv.Itoa(len(opts)))
-	return []hectorgithub.Milestone{{Number: 1, Title: "v1"}}, nil
+	return []gh.Milestone{{Number: 1, Title: "v1"}}, nil
 }
 
-func (c *githubToolClient) UpdateMilestone(_ context.Context, repo hectorgithub.Repository, number int, opts ...hectorgithub.MilestoneOption) (hectorgithub.Milestone, error) {
+func (c *githubToolClient) UpdateMilestone(_ context.Context, repo gh.Repository, number int, opts ...gh.MilestoneOption) (gh.Milestone, error) {
 	c.calls = append(c.calls, "update milestone "+repo.Owner+"/"+repo.Name+" #"+strconv.Itoa(number)+" opts:"+strconv.Itoa(len(opts)))
-	return hectorgithub.Milestone{Number: number}, nil
+	return gh.Milestone{Number: number}, nil
 }
 
-func (c *githubToolClient) AddBlockedBy(_ context.Context, repo hectorgithub.Repository, blockingIssueNumber int, blockedIssueNumber int) (hectorgithub.IssueWithBlocking, error) {
+func (c *githubToolClient) AddBlockedBy(_ context.Context, repo gh.Repository, blockingIssueNumber int, blockedIssueNumber int) (gh.IssueWithBlocking, error) {
 	c.calls = append(c.calls, "add blocked_by "+repo.Owner+"/"+repo.Name+" "+strconv.Itoa(blockingIssueNumber)+"->"+strconv.Itoa(blockedIssueNumber))
-	return hectorgithub.IssueWithBlocking{Issue: hectorgithub.Issue{Number: blockedIssueNumber}}, nil
+	return gh.IssueWithBlocking{Issue: gh.Issue{Number: blockedIssueNumber}}, nil
 }
 
-func (c *githubToolClient) RemoveBlockedBy(_ context.Context, repo hectorgithub.Repository, blockingIssueNumber int, blockedIssueNumber int) (hectorgithub.IssueWithBlocking, error) {
+func (c *githubToolClient) RemoveBlockedBy(_ context.Context, repo gh.Repository, blockingIssueNumber int, blockedIssueNumber int) (gh.IssueWithBlocking, error) {
 	c.calls = append(c.calls, "remove blocked_by "+repo.Owner+"/"+repo.Name+" "+strconv.Itoa(blockingIssueNumber)+"->"+strconv.Itoa(blockedIssueNumber))
-	return hectorgithub.IssueWithBlocking{Issue: hectorgithub.Issue{Number: blockedIssueNumber}}, nil
+	return gh.IssueWithBlocking{Issue: gh.Issue{Number: blockedIssueNumber}}, nil
 }

@@ -15,15 +15,15 @@ import (
 	"testing"
 	"time"
 
-	hectorgithub "github.com/iamhectordev/hector/modules/github"
+	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/stretchr/testify/require"
 )
 
 type staticTokenProvider struct {
-	token hectorgithub.AccessToken
+	token gh.AccessToken
 }
 
-func (p staticTokenProvider) Token(context.Context) (hectorgithub.AccessToken, error) {
+func (p staticTokenProvider) Token(context.Context) (gh.AccessToken, error) {
 	return p.token, nil
 }
 
@@ -39,15 +39,15 @@ func TestClientUsesInjectedTokenProvider(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := hectorgithub.NewClientWithTokenProvider(hectorgithub.ClientConfig{
+	client, err := gh.NewClientWithTokenProvider(gh.ClientConfig{
 		APIURL: server.URL,
-	}, staticTokenProvider{token: hectorgithub.AccessToken{
+	}, staticTokenProvider{token: gh.AccessToken{
 		Value:     "provided-token",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}})
 	require.NoError(t, err)
 
-	issue, err := client.GetIssue(t.Context(), hectorgithub.Repository{
+	issue, err := client.GetIssue(t.Context(), gh.Repository{
 		Owner: "acme",
 		Name:  "widgets",
 	}, 7)
@@ -79,15 +79,15 @@ func TestClientGetsIssueWithBlockingContext(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := hectorgithub.NewClientWithTokenProvider(hectorgithub.ClientConfig{
+	client, err := gh.NewClientWithTokenProvider(gh.ClientConfig{
 		APIURL: server.URL,
-	}, staticTokenProvider{token: hectorgithub.AccessToken{
+	}, staticTokenProvider{token: gh.AccessToken{
 		Value:     "provided-token",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}})
 	require.NoError(t, err)
 
-	issue, err := client.GetIssueWithBlocking(t.Context(), hectorgithub.Repository{
+	issue, err := client.GetIssueWithBlocking(t.Context(), gh.Repository{
 		Owner: "acme",
 		Name:  "widgets",
 	}, 7)
@@ -99,14 +99,14 @@ func TestClientGetsIssueWithBlockingContext(t *testing.T) {
 		"/repos/acme/widgets/issues/7/dependencies/blocking",
 	}, paths)
 	require.Equal(t, "Build tools", issue.Title)
-	require.Equal(t, []hectorgithub.IssueSummary{{
+	require.Equal(t, []gh.IssueSummary{{
 		ID:     88,
 		Number: 6,
 		Title:  "Design API",
 		State:  "closed",
 		URL:    "https://github.com/acme/widgets/issues/6",
 	}}, issue.BlockedBy)
-	require.Equal(t, []hectorgithub.IssueSummary{{
+	require.Equal(t, []gh.IssueSummary{{
 		ID:     111,
 		Number: 9,
 		Title:  "Wire Slack UX",
@@ -146,19 +146,19 @@ func TestClientManagesMilestones(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := hectorgithub.NewClientWithTokenProvider(hectorgithub.ClientConfig{
+	client, err := gh.NewClientWithTokenProvider(gh.ClientConfig{
 		APIURL: server.URL,
-	}, staticTokenProvider{token: hectorgithub.AccessToken{
+	}, staticTokenProvider{token: gh.AccessToken{
 		Value:     "provided-token",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}})
 	require.NoError(t, err)
 
-	milestones, err := client.ListMilestones(t.Context(), hectorgithub.Repository{Owner: "acme", Name: "widgets"}, hectorgithub.WithMilestoneState("all"))
+	milestones, err := client.ListMilestones(t.Context(), gh.Repository{Owner: "acme", Name: "widgets"}, gh.WithMilestoneState("all"))
 	require.NoError(t, err)
-	created, err := client.CreateMilestone(t.Context(), hectorgithub.Repository{Owner: "acme", Name: "widgets"}, "v2", hectorgithub.WithMilestoneDescription("Second"))
+	created, err := client.CreateMilestone(t.Context(), gh.Repository{Owner: "acme", Name: "widgets"}, "v2", gh.WithMilestoneDescription("Second"))
 	require.NoError(t, err)
-	updated, err := client.UpdateMilestone(t.Context(), hectorgithub.Repository{Owner: "acme", Name: "widgets"}, 2, hectorgithub.WithMilestoneTitle("v2.1"), hectorgithub.WithMilestoneDescription("Updated"))
+	updated, err := client.UpdateMilestone(t.Context(), gh.Repository{Owner: "acme", Name: "widgets"}, 2, gh.WithMilestoneTitle("v2.1"), gh.WithMilestoneDescription("Updated"))
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -213,17 +213,17 @@ func TestClientManagesBlockedByRelationships(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := hectorgithub.NewClientWithTokenProvider(hectorgithub.ClientConfig{
+	client, err := gh.NewClientWithTokenProvider(gh.ClientConfig{
 		APIURL: server.URL,
-	}, staticTokenProvider{token: hectorgithub.AccessToken{
+	}, staticTokenProvider{token: gh.AccessToken{
 		Value:     "provided-token",
 		ExpiresAt: time.Now().Add(time.Hour),
 	}})
 	require.NoError(t, err)
 
-	created, err := client.AddBlockedBy(t.Context(), hectorgithub.Repository{Owner: "acme", Name: "widgets"}, 6, 7)
+	created, err := client.AddBlockedBy(t.Context(), gh.Repository{Owner: "acme", Name: "widgets"}, 6, 7)
 	require.NoError(t, err)
-	removed, err := client.RemoveBlockedBy(t.Context(), hectorgithub.Repository{Owner: "acme", Name: "widgets"}, 6, 7)
+	removed, err := client.RemoveBlockedBy(t.Context(), gh.Repository{Owner: "acme", Name: "widgets"}, 6, 7)
 	require.NoError(t, err)
 
 	require.Equal(t, []string{
@@ -275,7 +275,7 @@ func TestClientCanFetchIssueWithGitHubAppInstallationAuth(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	client, err := hectorgithub.NewClient(hectorgithub.Config{
+	client, err := gh.NewClient(gh.Config{
 		AppID:          123,
 		InstallationID: 456,
 		PrivateKeyPath: privateKeyPath,
@@ -283,7 +283,7 @@ func TestClientCanFetchIssueWithGitHubAppInstallationAuth(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	issue, err := client.GetIssue(t.Context(), hectorgithub.Repository{
+	issue, err := client.GetIssue(t.Context(), gh.Repository{
 		Owner: "acme",
 		Name:  "widgets",
 	}, 7)
@@ -300,7 +300,7 @@ func TestClientCanFetchIssueWithGitHubAppInstallationAuth(t *testing.T) {
 func TestClientRejectsInvalidConfig(t *testing.T) {
 	t.Parallel()
 
-	_, err := hectorgithub.NewClient(hectorgithub.Config{})
+	_, err := gh.NewClient(gh.Config{Enabled: true})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "github: invalid config")
 }
@@ -308,7 +308,7 @@ func TestClientRejectsInvalidConfig(t *testing.T) {
 func TestClientRejectsUnsupportedAuthType(t *testing.T) {
 	t.Parallel()
 
-	_, err := hectorgithub.NewClient(hectorgithub.Config{
+	_, err := gh.NewClient(gh.Config{
 		AuthType:       "oauth_user",
 		AppID:          123,
 		InstallationID: 456,
