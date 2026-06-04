@@ -17,16 +17,12 @@ func TestRuntimeStartsTracingBeforeAppInit(t *testing.T) {
 		Tracing: tracing.Config{
 			Enabled:     true,
 			ServiceName: "hector",
-			SampleRatio: 1,
-			Exporter: tracing.ExporterConfig{
-				Type: tracing.ExporterJSONL,
-				Path: "traces.jsonl",
-			},
+			SampleRatio: -1,
 		},
 	}, app.WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))))
 	require.NoError(t, err)
 
 	err = runtime.Start(t.Context())
 	require.Error(t, err)
-	require.ErrorContains(t, err, "jsonl exporter")
+	require.ErrorContains(t, err, "sample_ratio")
 }

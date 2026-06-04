@@ -29,12 +29,22 @@ func Setup(_ context.Context, cfg Config) (*Runtime, error) {
 		return &Runtime{}, nil
 	}
 
-	provider := sdktrace.NewTracerProvider(
+	exporter, err := newSpanExporter(cfg.Exporter)
+	if err != nil {
+		return nil, err
+	}
+	options := []sdktrace.TracerProviderOption{
 		sdktrace.WithResource(resource.NewWithAttributes(
 			semconv.SchemaURL,
 			semconv.ServiceName(cfg.ServiceName),
 		)),
 		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(cfg.SampleRatio))),
+	}
+	if exporter != nil {
+		options = append(options, sdktrace.WithBatcher(exporter))
+	}
+	provider := sdktrace.NewTracerProvider(
+		options...,
 	)
 	otel.SetTracerProvider(provider)
 	return &Runtime{enabled: true, provider: provider}, nil
@@ -81,8 +91,22 @@ func validateConfig(cfg Config) error {
 	case ExporterNone:
 		return nil
 	case ExporterJSONL:
-		return fmt.Errorf("tracing: jsonl exporter is not implemented")
+		if cfg.Exporter.Path == "" {
+			return fmt.Errorf("tracing: jsonl exporter path is required")
+		}
+		return nil
 	default:
 		return fmt.Errorf("tracing: unsupported exporter type %q", cfg.Exporter.Type)
+	}
+}
+
+func newSpanExporter(cfg ExporterConfig) (sdktrace.SpanExporter, error) {
+	switch cfg.Type {
+	case ExporterNone:
+		return nil, nil
+	case ExporterJSONL:
+		return NewJSONLExporter(cfg.Path)
+	default:
+		return nil, fmt.Errorf("tracing: unsupported exporter type %q", cfg.Type)
 	}
 }
