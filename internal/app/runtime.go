@@ -32,11 +32,11 @@ type Runtime struct {
 	profile Profile
 	logger  *slog.Logger
 
-	tracing       *tracing.Runtime
-	db            *sql.DB
-	bus           *waffle.EventBus
-	sv            *supervisor.Supervisor
-	githubCloser  io.Closer
+	tracing      *tracing.Runtime
+	db           *sql.DB
+	bus          *waffle.EventBus
+	sv           *supervisor.Supervisor
+	githubCloser io.Closer
 }
 
 // NewRuntime builds a Runtime from typed application config.
@@ -228,12 +228,22 @@ func (r *Runtime) initModules(
 }
 
 func (r *Runtime) initSupervisor(modules []supervisor.Module) error {
-	sv, err := supervisor.New(modules,
+	opts := []supervisor.Option{
 		supervisor.WithLogger(r.logger),
 		supervisor.WithPostInitHook("bus.start", r.bus.Start),
 		supervisor.WithPreStopHook("bus.drain", r.bus.Drain),
 		supervisor.WithPostStopHook("bus.shutdown", r.bus.Shutdown),
-	)
+	}
+	if r.tracing != nil {
+		opts = append(opts, supervisor.WithPostStopHook("tracing.shutdown", func(ctx context.Context) error {
+			if err := r.tracing.Shutdown(ctx); err != nil {
+				return err
+			}
+			r.tracing = nil
+			return nil
+		}))
+	}
+	sv, err := supervisor.New(modules, opts...)
 	if err != nil {
 		r.logger.Error("failed to create supervisor", "err", err)
 		return err
