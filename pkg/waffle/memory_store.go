@@ -26,6 +26,7 @@ func (s *MemoryStore) Append(ctx context.Context, event EventRecord) error {
 	}
 
 	event.Payload = append([]byte(nil), event.Payload...)
+	event.Headers = copyHeaders(event.Headers)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -49,6 +50,7 @@ func (s *MemoryStore) Get(ctx context.Context, id string) (EventRecord, error) {
 		if event.ID == id {
 			out := event
 			out.Payload = append([]byte(nil), event.Payload...)
+			out.Headers = copyHeaders(event.Headers)
 			return out, nil
 		}
 	}
@@ -75,6 +77,7 @@ func (s *MemoryStore) List(ctx context.Context, query EventQuery) ([]EventRecord
 			SchemaVersion: event.SchemaVersion,
 			OccurredAt:    event.OccurredAt,
 			Payload:       append([]byte(nil), event.Payload...),
+			Headers:       copyHeaders(event.Headers),
 		}
 	}
 	s.mu.RUnlock()
@@ -108,8 +111,20 @@ func (s *MemoryStore) Events() []EventRecord {
 	events := make([]EventRecord, len(s.events))
 	for i, event := range s.events {
 		event.Payload = append([]byte(nil), event.Payload...)
+		event.Headers = copyHeaders(event.Headers)
 		events[i] = event
 	}
 
 	return events
+}
+
+func copyHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(headers))
+	for key, value := range headers {
+		out[key] = value
+	}
+	return out
 }

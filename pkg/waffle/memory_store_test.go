@@ -32,15 +32,39 @@ func TestMemoryStoreReturnsCopies(t *testing.T) {
 	ctx := t.Context()
 	store := waffle.NewMemoryStore()
 
-	require.NoError(t, store.Append(ctx, testRecord("evt_1")))
+	record := testRecord("evt_1")
+	record.Headers = map[string]string{"traceparent": "original"}
+	require.NoError(t, store.Append(ctx, record))
 
 	events := store.Events()
 	events[0].ID = "changed"
 	events[0].Payload[0] = 'x'
+	events[0].Headers["traceparent"] = "changed"
 
 	events = store.Events()
 	require.Equal(t, "evt_1", events[0].ID)
 	require.JSONEq(t, `{"message":"hello"}`, string(events[0].Payload))
+	require.Equal(t, "original", events[0].Headers["traceparent"])
+}
+
+func TestMemoryStorePreservesHeadersOnReadPaths(t *testing.T) {
+	ctx := t.Context()
+	store := waffle.NewMemoryStore()
+	record := testRecord("evt_headers")
+	record.Headers = map[string]string{
+		"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+		"baggage":     "session.id=sess_123",
+	}
+	require.NoError(t, store.Append(ctx, record))
+
+	got, err := store.Get(ctx, record.ID)
+	require.NoError(t, err)
+	require.Equal(t, record.Headers, got.Headers)
+
+	list, err := store.List(ctx, waffle.EventQuery{Limit: 10})
+	require.NoError(t, err)
+	require.Len(t, list, 1)
+	require.Equal(t, record.Headers, list[0].Headers)
 }
 
 func TestMemoryStoreRespectsCanceledContext(t *testing.T) {

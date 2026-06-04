@@ -14,6 +14,9 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/iamhectordev/hector/pkg/migrations"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -53,6 +56,58 @@ func TestPersistentReactionRunsAndMarksSucceeded(t *testing.T) {
 
 	require.Equal(t, "hello", <-got)
 	require.Equal(t, string(waffle.ReactionSucceeded), onlyReactionStatus(t, db))
+}
+
+func TestPersistentReactionContinuesRecordedTrace(t *testing.T) {
+	ctx := t.Context()
+	installTestTracing(t)
+
+	db := openPersistentTestDB(t)
+	store := wafflesqlite.NewStore(db)
+	bus, err := waffle.NewEventBus(
+		waffle.WithStore(store),
+		waffle.WithPersistentReactions(),
+	)
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.trace_context", 1)
+	require.NoError(t, err)
+
+	parentCtx, parent := otel.Tracer("test").Start(ctx, "record")
+	parentTraceID := parent.SpanContext().TraceID()
+	parent.End()
+
+	got := make(chan string, 1)
+	err = waffle.On(bus, def).Handle("test.trace", func(ctx context.Context, _ waffle.Event[testMessage]) error {
+		_, span := otel.Tracer("test").Start(ctx, "handle")
+		defer span.End()
+		got <- span.SpanContext().TraceID().String()
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
+
+	require.NoError(t, bus.Record(parentCtx, def.New(testMessage{Text: "hello"})))
+	require.NoError(t, bus.Drain(ctx))
+
+	require.Equal(t, parentTraceID.String(), <-got)
+}
+
+func installTestTracing(t *testing.T) {
+	t.Helper()
+
+	previousPropagator := otel.GetTextMapPropagator()
+	previousProvider := otel.GetTracerProvider()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		require.NoError(t, provider.Shutdown(t.Context()))
+		otel.SetTextMapPropagator(previousPropagator)
+		otel.SetTracerProvider(previousProvider)
+	})
 }
 
 func TestPersistentReactionFailureMarksFailed(t *testing.T) {

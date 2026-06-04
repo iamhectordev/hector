@@ -8,6 +8,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
@@ -280,6 +285,64 @@ func TestRecordAppendsToStore(t *testing.T) {
 	require.JSONEq(t, `{"Text":"hello"}`, string(events[0].Payload))
 }
 
+func TestRecordStoresPropagationHeadersSeparatelyFromPayload(t *testing.T) {
+	ctx := t.Context()
+	installBusTestTracing(t)
+	store := waffle.NewMemoryStore()
+	bus, err := waffle.NewEventBus(waffle.WithStore(store))
+	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
+	def, err := waffle.Define[testMessage]("test.propagation_headers", 1)
+	require.NoError(t, err)
+
+	recordCtx, span := otel.Tracer("test").Start(ctx, "record")
+	defer span.End()
+	bag, err := baggage.Parse("session.id=sess_123")
+	require.NoError(t, err)
+	recordCtx = baggage.ContextWithBaggage(recordCtx, bag)
+
+	require.NoError(t, bus.Record(recordCtx, def.New(testMessage{Text: "hello"})))
+
+	events := store.Events()
+	require.Len(t, events, 1)
+	require.JSONEq(t, `{"Text":"hello"}`, string(events[0].Payload))
+	require.NotEmpty(t, events[0].Headers["traceparent"])
+	require.Contains(t, events[0].Headers["baggage"], "session.id=sess_123")
+}
+
+func TestInMemoryHandlerExtractsRecordedPropagationHeaders(t *testing.T) {
+	ctx := t.Context()
+	installBusTestTracing(t)
+	bus, err := waffle.NewEventBus()
+	require.NoError(t, err)
+	def, err := waffle.Define[testMessage]("test.memory_trace_context", 1)
+	require.NoError(t, err)
+	gotTraceID := make(chan string, 1)
+	gotBaggage := make(chan string, 1)
+
+	err = waffle.On(bus, def).Handle("test.trace", func(ctx context.Context, _ waffle.Event[testMessage]) error {
+		spanContext := trace.SpanContextFromContext(ctx)
+		gotTraceID <- spanContext.TraceID().String()
+		gotBaggage <- baggage.FromContext(ctx).Member("session.id").Value()
+		return nil
+	})
+	require.NoError(t, err)
+	require.NoError(t, bus.Start(ctx))
+
+	recordCtx, span := otel.Tracer("test").Start(ctx, "record")
+	recordTraceID := span.SpanContext().TraceID().String()
+	span.End()
+	bag, err := baggage.Parse("session.id=sess_456")
+	require.NoError(t, err)
+	recordCtx = baggage.ContextWithBaggage(recordCtx, bag)
+
+	require.NoError(t, bus.Record(recordCtx, def.New(testMessage{})))
+	require.NoError(t, bus.Drain(ctx))
+
+	require.Equal(t, recordTraceID, <-gotTraceID)
+	require.Equal(t, "sess_456", <-gotBaggage)
+}
+
 func TestRecordReturnsStoreErrors(t *testing.T) {
 	ctx := t.Context()
 	storeErr := errors.New("store failed")
@@ -306,4 +369,22 @@ func (s failingStore) Get(context.Context, string) (waffle.EventRecord, error) {
 
 func (s failingStore) List(context.Context, waffle.EventQuery) ([]waffle.EventRecord, error) {
 	return nil, nil
+}
+
+func installBusTestTracing(t *testing.T) {
+	t.Helper()
+
+	previousPropagator := otel.GetTextMapPropagator()
+	previousProvider := otel.GetTracerProvider()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		require.NoError(t, provider.Shutdown(t.Context()))
+		otel.SetTextMapPropagator(previousPropagator)
+		otel.SetTracerProvider(previousProvider)
+	})
 }

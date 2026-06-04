@@ -50,5 +50,10 @@ CREATE TABLE waffle_reactions (
 			Name:    "add_reaction_running_status_constraint",
 			SQL:     `CREATE INDEX waffle_reactions_running_idx ON waffle_reactions (status, updated_at)`,
 		},
+		migrations.Migration{
+			Version: 6,
+			Name:    "add_event_headers",
+			SQL:     `ALTER TABLE waffle_events ADD COLUMN headers BLOB NOT NULL DEFAULT '{}'`,
+		},
 	)
 }

@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"reflect"
 	"sync"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // ErrClosed is returned when recording to a shut down bus.
@@ -91,7 +94,7 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 		return ErrNotStarted
 	}
 
-	record, err := eventRecord(event)
+	record, err := eventRecord(ctx, event)
 	if err != nil {
 		if log := b.log(ctx); log != nil {
 			log.ErrorContext(ctx, "record encoding failed", "event_type", event.Type(), "err", err)
@@ -112,11 +115,14 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 	return nil
 }
 
-func eventRecord(event AnyEvent) (EventRecord, error) {
+func eventRecord(ctx context.Context, event AnyEvent) (EventRecord, error) {
 	payload, err := eventPayload(event)
 	if err != nil {
 		return EventRecord{}, err
 	}
+
+	headers := propagation.MapCarrier{}
+	otel.GetTextMapPropagator().Inject(ctx, headers)
 
 	return EventRecord{
 		ID:            event.ID(),
@@ -124,6 +130,7 @@ func eventRecord(event AnyEvent) (EventRecord, error) {
 		SchemaVersion: event.SchemaVersion(),
 		OccurredAt:    event.OccurredAt(),
 		Payload:       payload,
+		Headers:       map[string]string(headers),
 	}, nil
 }
 

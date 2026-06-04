@@ -10,6 +10,8 @@ import (
 
 	"github.com/oklog/ulid/v2"
 	"github.com/sourcegraph/conc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 const (
@@ -29,6 +31,7 @@ type reactionDispatcher struct {
 	pollLimit     int
 
 	mu       sync.Mutex
+	drainMu  sync.Mutex
 	started  bool
 	jobs     chan reactionJob
 	wake     chan struct{}
@@ -182,6 +185,9 @@ func (d *reactionDispatcher) poll(ctx context.Context) {
 }
 
 func (d *reactionDispatcher) drainPending(ctx context.Context) {
+	d.drainMu.Lock()
+	defer d.drainMu.Unlock()
+
 	for {
 		reactions, err := d.store.ListPendingReactions(ctx, d.pollLimit)
 		if err != nil {
@@ -261,7 +267,7 @@ func (d *reactionDispatcher) enqueue(ctx context.Context, reaction ReactionRecor
 	}
 
 	select {
-	case d.jobs <- reactionJob{ctx: ctx, reaction: reaction, event: event, handler: handler}:
+	case d.jobs <- reactionJob{ctx: ctx, reaction: reaction, event: event, record: eventRecord, handler: handler}:
 		return true
 	case <-ctx.Done():
 		d.pending.Done()
@@ -337,7 +343,8 @@ func (d *reactionDispatcher) callHandler(job reactionJob) (err error) {
 			err = fmt.Errorf("handler panicked: %v", v)
 		}
 	}()
-	return job.handler.handle(job.ctx, job.event)
+	ctx := otel.GetTextMapPropagator().Extract(job.ctx, propagation.MapCarrier(job.record.Headers))
+	return job.handler.handle(ctx, job.event)
 }
 
 func (d *reactionDispatcher) log(context.Context) *slog.Logger {
@@ -348,5 +355,6 @@ type reactionJob struct {
 	ctx      context.Context
 	reaction ReactionRecord
 	event    AnyEvent
+	record   EventRecord
 	handler  registeredHandler
 }

@@ -7,6 +7,8 @@ import (
 	"sync"
 
 	"github.com/sourcegraph/conc"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type dispatcher interface {
@@ -67,7 +69,7 @@ func (d *memoryDispatcher) Dispatch(ctx context.Context, event AnyEvent, record 
 		d.pending.Add(1)
 
 		select {
-		case d.jobs <- job{ctx: ctx, event: event, handler: handler}:
+		case d.jobs <- job{ctx: ctx, event: event, record: record, handler: handler}:
 		case <-ctx.Done():
 			d.pending.Done()
 			if log := d.log(ctx); log != nil {
@@ -137,7 +139,8 @@ func (d *memoryDispatcher) callHandler(job job) (err error) {
 			err = fmt.Errorf("handler panicked: %v", v)
 		}
 	}()
-	return job.handler.handle(job.ctx, job.event)
+	ctx := otel.GetTextMapPropagator().Extract(job.ctx, propagation.MapCarrier(job.record.Headers))
+	return job.handler.handle(ctx, job.event)
 }
 
 func (d *memoryDispatcher) log(context.Context) *slog.Logger {
@@ -147,6 +150,7 @@ func (d *memoryDispatcher) log(context.Context) *slog.Logger {
 type job struct {
 	ctx     context.Context
 	event   AnyEvent
+	record  EventRecord
 	handler registeredHandler
 }
 

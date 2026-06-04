@@ -69,4 +69,5 @@ type EventRecord struct {
 	SchemaVersion int
 	OccurredAt    time.Time
 	Payload       []byte
+	Headers       map[string]string
 }

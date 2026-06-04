@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -28,8 +29,12 @@ func NewStore(db *sql.DB) *Store {
 // Append inserts one event. Duplicate id returns ErrDuplicateID.
 func (s *Store) Append(ctx context.Context, event waffle.EventRecord) error {
 	payload := append([]byte(nil), event.Payload...)
+	headers, err := encodeHeaders(event.Headers)
+	if err != nil {
+		return err
+	}
 
-	err := insertEvent(ctx, s.db, event, payload)
+	err = insertEvent(ctx, s.db, event, payload, headers)
 	if err != nil {
 		return err
 	}
@@ -41,11 +46,11 @@ type sqlExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
-func insertEvent(ctx context.Context, exec sqlExecer, event waffle.EventRecord, payload []byte) error {
+func insertEvent(ctx context.Context, exec sqlExecer, event waffle.EventRecord, payload, headers []byte) error {
 	_, err := exec.ExecContext(ctx, `
-INSERT INTO waffle_events (id, type, schema_version, occurred_at, payload)
-VALUES (?, ?, ?, ?, ?)
-`, event.ID, event.Type, event.SchemaVersion, event.OccurredAt.UTC().Format(time.RFC3339Nano), payload)
+INSERT INTO waffle_events (id, type, schema_version, occurred_at, payload, headers)
+VALUES (?, ?, ?, ?, ?, ?)
+`, event.ID, event.Type, event.SchemaVersion, event.OccurredAt.UTC().Format(time.RFC3339Nano), payload, headers)
 	if err != nil {
 		if isUniqueConstraint(err) {
 			return fmt.Errorf("%w: %s", ErrDuplicateID, event.ID)
@@ -75,7 +80,11 @@ func (s *Store) RecordEventReactions(ctx context.Context, event waffle.EventReco
 	defer func() { _ = tx.Rollback() }()
 
 	payload := append([]byte(nil), event.Payload...)
-	if err := insertEvent(ctx, tx, event, payload); err != nil {
+	headers, err := encodeHeaders(event.Headers)
+	if err != nil {
+		return err
+	}
+	if err := insertEvent(ctx, tx, event, payload, headers); err != nil {
 		return err
 	}
 
@@ -243,12 +252,12 @@ func isUniqueConstraint(err error) bool {
 func (s *Store) Get(ctx context.Context, id string) (waffle.EventRecord, error) {
 	var rec waffle.EventRecord
 	var occurred string
-	var payload []byte
+	var payload, headers []byte
 
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, type, schema_version, occurred_at, payload
+SELECT id, type, schema_version, occurred_at, payload, headers
 FROM waffle_events WHERE id = ?
-`, id).Scan(&rec.ID, &rec.Type, &rec.SchemaVersion, &occurred, &payload)
+`, id).Scan(&rec.ID, &rec.Type, &rec.SchemaVersion, &occurred, &payload, &headers)
 	if errors.Is(err, sql.ErrNoRows) {
 		return waffle.EventRecord{}, waffle.ErrEventNotFound
 	}
@@ -262,6 +271,10 @@ FROM waffle_events WHERE id = ?
 	}
 
 	rec.Payload = append([]byte(nil), payload...)
+	rec.Headers, err = decodeHeaders(headers)
+	if err != nil {
+		return waffle.EventRecord{}, err
+	}
 	return rec, nil
 }
 
@@ -274,7 +287,7 @@ func (s *Store) List(ctx context.Context, query waffle.EventQuery) ([]waffle.Eve
 
 	if query.Before.IsZero() {
 		rows, err = s.db.QueryContext(ctx, `
-SELECT id, type, schema_version, occurred_at, payload
+SELECT id, type, schema_version, occurred_at, payload, headers
 FROM waffle_events
 ORDER BY occurred_at DESC
 LIMIT ?
@@ -282,7 +295,7 @@ LIMIT ?
 	} else {
 		before := query.Before.UTC().Format(time.RFC3339Nano)
 		rows, err = s.db.QueryContext(ctx, `
-SELECT id, type, schema_version, occurred_at, payload
+SELECT id, type, schema_version, occurred_at, payload, headers
 FROM waffle_events
 WHERE occurred_at < ?
 ORDER BY occurred_at DESC
@@ -299,9 +312,9 @@ LIMIT ?
 	for rows.Next() {
 		var rec waffle.EventRecord
 		var occurred string
-		var payload []byte
+		var payload, headers []byte
 
-		if err := rows.Scan(&rec.ID, &rec.Type, &rec.SchemaVersion, &occurred, &payload); err != nil {
+		if err := rows.Scan(&rec.ID, &rec.Type, &rec.SchemaVersion, &occurred, &payload, &headers); err != nil {
 			return nil, err
 		}
 
@@ -311,8 +324,37 @@ LIMIT ?
 		}
 
 		rec.Payload = append([]byte(nil), payload...)
+		rec.Headers, err = decodeHeaders(headers)
+		if err != nil {
+			return nil, err
+		}
 		out = append(out, rec)
 	}
 
 	return out, rows.Err()
+}
+
+func encodeHeaders(headers map[string]string) ([]byte, error) {
+	if len(headers) == 0 {
+		return []byte(`{}`), nil
+	}
+	out, err := json.Marshal(headers)
+	if err != nil {
+		return nil, fmt.Errorf("waffle/sqlite: encode headers: %w", err)
+	}
+	return out, nil
+}
+
+func decodeHeaders(headers []byte) (map[string]string, error) {
+	if len(headers) == 0 {
+		return nil, nil
+	}
+	var out map[string]string
+	if err := json.Unmarshal(headers, &out); err != nil {
+		return nil, fmt.Errorf("waffle/sqlite: decode headers: %w", err)
+	}
+	if len(out) == 0 {
+		return nil, nil
+	}
+	return out, nil
 }

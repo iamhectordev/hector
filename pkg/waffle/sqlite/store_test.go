@@ -142,6 +142,10 @@ func TestStoreGet(t *testing.T) {
 		SchemaVersion: 2,
 		OccurredAt:    time.Date(2026, 6, 1, 15, 30, 0, 0, time.UTC),
 		Payload:       []byte(`{"k":"v"}`),
+		Headers: map[string]string{
+			"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+			"baggage":     "session.id=sess_123",
+		},
 	}
 	require.NoError(t, store.Append(ctx, record))
 
@@ -152,9 +156,46 @@ func TestStoreGet(t *testing.T) {
 	require.Equal(t, record.SchemaVersion, got.SchemaVersion)
 	require.True(t, record.OccurredAt.Equal(got.OccurredAt))
 	require.Equal(t, record.Payload, got.Payload)
+	require.Equal(t, record.Headers, got.Headers)
 
 	_, err = store.Get(ctx, "missing")
 	require.ErrorIs(t, err, waffle.ErrEventNotFound)
+}
+
+func TestStorePersistsHeadersSeparatelyFromPayload(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+
+	runner := migrations.New(db)
+	require.NoError(t, runner.Add(sqlite.Migrations()))
+	require.NoError(t, runner.Run(ctx))
+
+	store := sqlite.NewStore(db)
+	record := waffle.EventRecord{
+		ID:            "evt_headers",
+		Type:          "test.event",
+		SchemaVersion: 1,
+		OccurredAt:    time.Now().UTC(),
+		Payload:       []byte(`{"message":"hello"}`),
+		Headers: map[string]string{
+			"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+			"tracestate":  "vendor=value",
+			"baggage":     "session.id=sess_123",
+		},
+	}
+
+	require.NoError(t, store.Append(ctx, record))
+
+	var payload, headers []byte
+	require.NoError(t, db.QueryRowContext(ctx, `
+SELECT payload, headers FROM waffle_events WHERE id = ?
+`, record.ID).Scan(&payload, &headers))
+	require.JSONEq(t, `{"message":"hello"}`, string(payload))
+	require.JSONEq(t, `{
+	"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	"tracestate": "vendor=value",
+	"baggage": "session.id=sess_123"
+}`, string(headers))
 }
 
 func TestStoreList(t *testing.T) {
