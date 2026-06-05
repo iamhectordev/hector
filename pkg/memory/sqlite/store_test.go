@@ -52,6 +52,42 @@ func TestStorePutUpdatesExistingObject(t *testing.T) {
 	require.Equal(t, "updated content", results[0].Content)
 }
 
+func TestStoreSearch_PrefixMatchesLongerWords(t *testing.T) {
+	ctx := t.Context()
+	store := newStore(t)
+
+	require.NoError(t, store.Put(ctx, memory.Object{ID: "1", Content: "the deployment pipeline uses github actions"}))
+	require.NoError(t, store.Put(ctx, memory.Object{ID: "2", Content: "the payments team uses kafka"}))
+
+	results, err := store.Search(ctx, "deploy", 3)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, "1", results[0].ID)
+}
+
+func TestStoreSearch_FTSKeywordTreatedAsLiteral(t *testing.T) {
+	ctx := t.Context()
+	store := newStore(t)
+
+	require.NoError(t, store.Put(ctx, memory.Object{ID: "1", Content: "NOT sure about this decision"}))
+
+	results, err := store.Search(ctx, "NOT", 3)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, "1", results[0].ID)
+}
+
+func TestStoreSearch_ColumnFilterSyntaxDoesNotCrash(t *testing.T) {
+	ctx := t.Context()
+	store := newStore(t)
+
+	require.NoError(t, store.Put(ctx, memory.Object{ID: "1", Content: "the auth service is written in go"}))
+
+	results, err := store.Search(ctx, "content:auth", 3)
+	require.NoError(t, err)
+	require.NotEmpty(t, results)
+}
+
 func newStore(t *testing.T) *sqlite.Store {
 	t.Helper()
 	db := openTestDB(t)

@@ -83,8 +83,11 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]memory.O
 }
 
 // sanitizeFTSQuery converts a natural language string into an FTS5 OR query.
-// Punctuation is stripped, tokens are joined with OR so that documents
-// matching any query word are returned (ranked by how many they match).
+// Each token is quoted and suffixed with * so that:
+//   - FTS5 keywords (AND, OR, NOT) are treated as literals, not operators
+//   - Column filter syntax (col:term) is neutralised — the colon becomes a space
+//   - Prefix matching is enabled: "deploy" matches "deployment"
+//   - Results are ranked by how many tokens match (more matches = higher rank)
 func sanitizeFTSQuery(query string) string {
 	var b strings.Builder
 	for _, r := range query {
@@ -95,7 +98,11 @@ func sanitizeFTSQuery(query string) string {
 		}
 	}
 	tokens := strings.Fields(b.String())
-	return strings.Join(tokens, " OR ")
+	quoted := make([]string, len(tokens))
+	for i, tok := range tokens {
+		quoted[i] = `"` + tok + `"*`
+	}
+	return strings.Join(quoted, " OR ")
 }
 
 // isNoMatchError reports whether err is the FTS5 "no match" error, which is
