@@ -8,6 +8,7 @@ import (
 	"log/slog"
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
+	"github.com/iamhectordev/hector/internal/embed"
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
@@ -180,7 +181,11 @@ func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.
 	if err != nil {
 		return nil, nil, err
 	}
-	memRecall, err := tools.NewMemRecall(memorysqlite.NewStore(r.db))
+	memStore, err := r.initMemoryStore()
+	if err != nil {
+		return nil, nil, err
+	}
+	memRecall, err := tools.NewMemRecall(memStore)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -268,6 +273,17 @@ func (r *Runtime) close(ctx context.Context) {
 			r.logger.ErrorContext(ctx, "failed to shut down tracing", "err", err)
 		}
 	}
+}
+
+func (r *Runtime) initMemoryStore() (*memorysqlite.Store, error) {
+	if !r.cfg.Memory.EmbedEnabled {
+		return memorysqlite.NewStore(r.db), nil
+	}
+	embedder, err := embed.New(r.cfg.Memory.Embed)
+	if err != nil {
+		return nil, fmt.Errorf("memory: embedder: %w", err)
+	}
+	return memorysqlite.NewStore(r.db, memorysqlite.WithEmbedder(embedder)), nil
 }
 
 func newWebSearchTool(cfg search.Config) (tools.Tool, error) {

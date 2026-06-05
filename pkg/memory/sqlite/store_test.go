@@ -1,6 +1,7 @@
 package sqlite_test
 
 import (
+	"context"
 	"database/sql"
 	"testing"
 
@@ -86,6 +87,40 @@ func TestStoreSearch_ColumnFilterSyntaxDoesNotCrash(t *testing.T) {
 	results, err := store.Search(ctx, "content:auth", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
+}
+
+func TestStore_Put_StoresVecWhenEmbedderConfigured(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+	migrateDB(t, db)
+	store := sqlite.NewStore(db, sqlite.WithEmbedder(&echoEmbedder{}))
+
+	require.NoError(t, store.Put(ctx, memory.Object{ID: "1", Content: "the auth service uses postgres"}))
+
+	var blob []byte
+	err := db.QueryRowContext(ctx, `SELECT vec FROM memory_objects_vec WHERE id = ?`, "1").Scan(&blob)
+	require.NoError(t, err)
+	require.NotEmpty(t, blob)
+}
+
+func TestStore_Put_SkipsVecWhenNoEmbedder(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+	migrateDB(t, db)
+	store := sqlite.NewStore(db)
+
+	require.NoError(t, store.Put(ctx, memory.Object{ID: "1", Content: "the auth service uses postgres"}))
+
+	var count int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM memory_objects_vec`).Scan(&count))
+	require.Equal(t, 0, count)
+}
+
+// echoEmbedder is an in-test embedder that returns a fixed vector.
+type echoEmbedder struct{}
+
+func (e *echoEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
+	return []float32{0.1, 0.2, 0.3}, nil
 }
 
 func newStore(t *testing.T) *sqlite.Store {

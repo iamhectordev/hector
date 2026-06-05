@@ -20,5 +20,13 @@ func Migrations() migrations.MigrationSet {
 			Name:    "create_objects_fts",
 			SQL:     `CREATE VIRTUAL TABLE memory_objects_fts USING fts5(id UNINDEXED, content)`,
 		},
+		migrations.Migration{
+			Version: 3,
+			Name:    "create_objects_vec",
+			SQL: `CREATE TABLE memory_objects_vec (
+	id  TEXT PRIMARY KEY,
+	vec BLOB NOT NULL
+)`,
+		},
 	)
 }
