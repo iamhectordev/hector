@@ -13,7 +13,10 @@ type Embedder interface {
 // Provider selects which Embedder implementation to construct.
 type Provider string
 
-const ProviderOpenAI Provider = "openai"
+const (
+	ProviderEcho   Provider = "echo"
+	ProviderOpenAI Provider = "openai"
+)
 
 // Config selects a provider and holds its settings.
 type Config struct {
@@ -24,6 +27,8 @@ type Config struct {
 // New constructs an Embedder from cfg.
 func New(cfg Config) (Embedder, error) {
 	switch cfg.Provider {
+	case ProviderEcho:
+		return &EchoEmbedder{}, nil
 	case ProviderOpenAI, "":
 		return newOpenAI(cfg.OpenAI), nil
 	default:
