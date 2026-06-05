@@ -15,7 +15,7 @@ Design the technical approach for the current milestone or issue.
    Where things aren't obvious, present options with trade-offs.
    Flag risks: what could go wrong, what's uncertain, what couples badly.
 
-   Format: prose + code sketches. Short. No walls of text.
+   Format: prose + decision points. Code only for APIs and data flow — shapes and connections, not implementations. Short. No walls of text.
 
 3. **Golden paths**
    Look at what's in flow/paths/. For each part of the design, ask:

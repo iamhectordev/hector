@@ -39,7 +39,7 @@ func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module,
 	if err := validate.Struct(cfg); err != nil {
 		return nil, fmt.Errorf("slack: invalid config: %w", err)
 	}
-	var eventLogger islack.EventLogger = islack.NewDiscardEventLogger()
+	eventLogger := islack.NewDiscardEventLogger()
 	if cfg.EventLog.Enabled {
 		var err error
 		eventLogger, err = islack.NewFileEventLogger(cfg.EventLog)
