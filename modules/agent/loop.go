@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
@@ -32,7 +31,6 @@ type sessionProvider interface {
 type Loop struct {
 	completer llm.Completer
 	tools     ToolRuntime
-	log       *slog.Logger
 }
 
 // LoopOption configures a Loop.
@@ -43,13 +41,8 @@ func WithTools(t ToolRuntime) LoopOption {
 	return func(l *Loop) { l.tools = t }
 }
 
-// WithLogger sets the logger used for debug output.
-func WithLogger(logger *slog.Logger) LoopOption {
-	return func(l *Loop) { l.log = logger }
-}
-
 func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
-	l := &Loop{completer: c, log: slog.Default()}
+	l := &Loop{completer: c}
 	for _, opt := range opts {
 		opt(l)
 	}
@@ -102,18 +95,19 @@ func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, message
 			messages = append(messages, reply)
 			newMessagesStart = len(messages)
 			for _, call := range reply.ToolCalls {
-				l.log.DebugContext(ctx, "tool call", "tool", call.Name, "args", string(call.Arguments))
 				if l.tools == nil {
 					return nil, fmt.Errorf("agent: tool call %q requested without tools configured", call.Name)
 				}
+				logFields := toolCallFields(call)
 				toolCtx, toolSpan := telem.Trace(ctx, spanToolCall, toolCallFields(call)...)
+				l.log(ctx).DebugContext(ctx, "tool call", logFields...)
 				output, execErr := l.tools.Run(toolCtx, call.Name, call.Arguments)
 				toolSpan.End(&execErr)
 				if execErr != nil {
-					l.log.DebugContext(ctx, "tool error", "tool", call.Name, "error", execErr)
+					l.log(ctx).DebugContext(ctx, "tool error", append(logFields, telem.Any("error", execErr))...)
 					output = fmt.Sprintf("error: %s", execErr)
 				} else {
-					l.log.DebugContext(ctx, "tool result", "tool", call.Name, "output", output)
+					l.log(ctx).DebugContext(ctx, "tool result", logFields...)
 				}
 				messages = append(messages, schema.ToolResultMessage(call.ID, output))
 			}
@@ -130,7 +124,7 @@ func (l *Loop) withSession(ctx context.Context, agentCtx Context) context.Contex
 	}
 	s, err := provider.Session(ctx)
 	if err != nil {
-		l.log.WarnContext(ctx, "session metadata unavailable", "err", err)
+		l.log(ctx).WarnContext(ctx, "session metadata unavailable", telem.Any("err", err))
 		return ctx
 	}
 	if s.ID == "" && s.SourceURI == "" {
@@ -143,7 +137,7 @@ func (l *Loop) withSession(ctx context.Context, agentCtx Context) context.Contex
 func (l *Loop) history(ctx context.Context, agentCtx Context) []*schema.Message {
 	messages, err := agentCtx.Messages(ctx)
 	if err != nil {
-		l.log.WarnContext(ctx, "session history unavailable", "err", err)
+		l.log(ctx).WarnContext(ctx, "session history unavailable", telem.Any("err", err))
 		return nil
 	}
 	return messages
@@ -155,6 +149,12 @@ func (l *Loop) record(ctx context.Context, agentCtx Context, messages []*schema.
 	}
 
 	if err := agentCtx.Record(ctx, messages); err != nil {
-		l.log.WarnContext(ctx, "session record unavailable", "err", err)
+		l.log(ctx).WarnContext(ctx, "session record unavailable", telem.Any("err", err))
 	}
+}
+
+func (l *Loop) log(ctx context.Context) telem.ContextLogger {
+	return telem.Logger(ctx).With(
+		telem.String("component", "loop"),
+	)
 }

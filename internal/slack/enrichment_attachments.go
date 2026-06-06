@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 
+	"github.com/iamhectordev/hector/pkg/telem"
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 )
@@ -45,7 +46,7 @@ func (e MessageEnricher) enrichFile(ctx context.Context, file slackgo.File) File
 
 	info, _, _, err := e.api.GetFileInfoContext(ctx, file.ID, 0, 0)
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get file info", "err", err, "file", file.ID)
+		e.log(ctx).WarnContext(ctx, "failed to get file info", telem.Any("err", err), telem.String("file", file.ID))
 		attachment.Status = FileAttachmentStatusUnavailable
 		attachment.Reason = err.Error()
 		return attachment
@@ -69,7 +70,7 @@ func (e MessageEnricher) enrichFile(ctx context.Context, file slackgo.File) File
 
 	var buf bytes.Buffer
 	if err := e.api.GetFileContext(ctx, info.URLPrivateDownload, &buf); err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to download file", "err", err, "file", file.ID)
+		e.log(ctx).WarnContext(ctx, "failed to download file", telem.Any("err", err), telem.String("file", file.ID))
 		attachment.Status = FileAttachmentStatusUnavailable
 		attachment.Reason = err.Error()
 		return attachment
@@ -87,7 +88,7 @@ func (e MessageEnricher) enrichImage(ctx context.Context, file slackgo.File) Ima
 
 	info, _, _, err := e.api.GetFileInfoContext(ctx, file.ID, 0, 0)
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get image info", "err", err, "file", file.ID)
+		e.log(ctx).WarnContext(ctx, "failed to get image info", telem.Any("err", err), telem.String("file", file.ID))
 		attachment.Status = ImageAttachmentStatusUnavailable
 		attachment.Reason = err.Error()
 		return attachment
@@ -111,7 +112,7 @@ func (e MessageEnricher) enrichImage(ctx context.Context, file slackgo.File) Ima
 
 	var buf bytes.Buffer
 	if err := e.api.GetFileContext(ctx, info.URLPrivateDownload, &buf); err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to download image", "err", err, "file", file.ID)
+		e.log(ctx).WarnContext(ctx, "failed to download image", telem.Any("err", err), telem.String("file", file.ID))
 		attachment.Status = ImageAttachmentStatusUnavailable
 		attachment.Reason = err.Error()
 		return attachment

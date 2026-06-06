@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/iamhectordev/hector/internal/ulid"
 	"github.com/iamhectordev/hector/modules/agent"
@@ -10,6 +9,7 @@ import (
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/llm/structured"
 	pkgmem "github.com/iamhectordev/hector/pkg/memory"
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -38,7 +38,6 @@ type Module struct {
 	store     memoryStore
 	sessions  sessionStore
 	extractor *structured.Extractor[extractionResult]
-	log       *slog.Logger
 }
 
 // NewModule creates a Module. completer is used to extract facts from each turn.
@@ -52,7 +51,6 @@ func NewModule(bus *waffle.EventBus, store memoryStore, sessions sessionStore, c
 		store:     store,
 		sessions:  sessions,
 		extractor: extractor,
-		log:       slog.Default().With("component", "module", "module", "memory"),
 	}
 }
 
@@ -74,7 +72,7 @@ func (m *Module) onTurnEnd(ctx context.Context, e waffle.Event[agent.TurnEndData
 
 	messages, err := m.sessions.Messages(ctx, data.SourceURI)
 	if err != nil {
-		m.log.WarnContext(ctx, "memory: failed to fetch session", "err", err)
+		m.log(ctx).WarnContext(ctx, "memory: failed to fetch session", telem.Any("err", err))
 		return nil
 	}
 
@@ -88,7 +86,7 @@ func (m *Module) onTurnEnd(ctx context.Context, e waffle.Event[agent.TurnEndData
 
 	result, err := m.extractor.Extract(ctx, turn)
 	if err != nil {
-		m.log.WarnContext(ctx, "memory: extraction failed", "err", err)
+		m.log(ctx).WarnContext(ctx, "memory: extraction failed", telem.Any("err", err))
 		return nil
 	}
 
@@ -97,8 +95,15 @@ func (m *Module) onTurnEnd(ctx context.Context, e waffle.Event[agent.TurnEndData
 			ID:      ulid.New("mem"),
 			Content: obj.Content,
 		}); err != nil {
-			m.log.WarnContext(ctx, "memory: failed to store object", "err", err, "content", obj.Content)
+			m.log(ctx).WarnContext(ctx, "memory: failed to store object", telem.Any("err", err))
 		}
 	}
 	return nil
+}
+
+func (m *Module) log(ctx context.Context) telem.ContextLogger {
+	return telem.Logger(ctx).With(
+		telem.String("component", "module"),
+		telem.String("module", "memory"),
+	)
 }

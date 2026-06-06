@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 
 	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/iamhectordev/hector/internal/mcp"
 	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Register wires GitHub tools into registry. Caller must close the returned closer on shutdown.
@@ -67,7 +67,7 @@ func registerMCP(ctx context.Context, cfg gh.Config, tokens gh.TokenProvider, re
 			return nil, err
 		}
 	}
-	slog.InfoContext(ctx, "github mcp tools registered", "count", len(discovered))
+	telem.Logger(ctx).InfoContext(ctx, "github mcp tools registered", telem.Int("count", len(discovered)))
 	ok = true
 	return mcpClient, nil
 }

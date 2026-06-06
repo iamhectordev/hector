@@ -3,10 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Context provides transcript state for one agent turn.
@@ -39,7 +39,7 @@ func (c *SessionContext) Messages(ctx context.Context) ([]*schema.Message, error
 	repaired, injected := repairHistory(messages)
 	if len(injected) > 0 {
 		if err := c.store.Record(ctx, c.sourceURI, injected); err != nil {
-			slog.WarnContext(ctx, "agent: failed to persist repaired session history", "err", err)
+			telem.Logger(ctx).WarnContext(ctx, "agent: failed to persist repaired session history", telem.Any("err", err))
 		}
 	}
 	return repaired, nil

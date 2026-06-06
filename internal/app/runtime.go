@@ -223,7 +223,6 @@ func (r *Runtime) initModules(
 	sessionStore := sessionsqlite.NewStore(r.db)
 	loop := agent.NewLoop(completer,
 		agent.WithTools(toolRegistry),
-		agent.WithLogger(r.logger.With("component", "loop")),
 	)
 	modules = append(modules,
 		agent.NewModule(r.bus, loop,

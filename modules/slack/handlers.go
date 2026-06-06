@@ -15,7 +15,7 @@ import (
 )
 
 func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
-	m.log(ctx).DebugContext(ctx, "slack socket event", "type", evt.Type)
+	m.log(ctx).DebugContext(ctx, "slack socket event", telem.String("type", string(evt.Type)))
 	switch evt.Type {
 	case socketmode.EventTypeConnecting:
 		m.log(ctx).DebugContext(ctx, "slack socket connecting")
@@ -28,7 +28,7 @@ func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Clien
 	case socketmode.EventTypeInvalidAuth:
 		return fmt.Errorf("slack: socket mode invalid auth")
 	case socketmode.EventTypeIncomingError:
-		m.log(ctx).WarnContext(ctx, "slack socket incoming error", "err", incomingError(evt))
+		m.log(ctx).WarnContext(ctx, "slack socket incoming error", telem.Any("err", incomingError(evt)))
 		return nil
 	case socketmode.EventTypeErrorBadMessage:
 		return badMessageError(evt)
@@ -37,7 +37,7 @@ func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Clien
 	case socketmode.EventTypeEventsAPI:
 		return m.handleEventsAPI(ctx, client, evt)
 	default:
-		m.log(ctx).DebugContext(ctx, "slack socket event ignored", "event_type", evt.Type)
+		m.log(ctx).DebugContext(ctx, "slack socket event ignored", telem.String("event_type", string(evt.Type)))
 		return nil
 	}
 }
@@ -48,7 +48,10 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 		return fmt.Errorf("slack: expected EventsAPIEvent, got %T", evt.Data)
 	}
 
-	m.log(ctx).DebugContext(ctx, "slack api event", "type", apiEvent.Type, "inner_type", apiEvent.InnerEvent.Type)
+	m.log(ctx).DebugContext(ctx, "slack api event",
+		telem.String("type", string(apiEvent.Type)),
+		telem.String("inner_type", apiEvent.InnerEvent.Type),
+	)
 
 	if apiEvent.Type != slackevents.CallbackEvent {
 		return ackSocketEvent(ctx, client, evt)
@@ -66,14 +69,20 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 }
 
 func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent) error {
-	m.log(ctx).DebugContext(ctx, "slack message event", "user", e.User, "channel", e.Channel, "subtype", e.SubType, "thread_ts", e.ThreadTimeStamp, "ts", e.TimeStamp)
+	m.log(ctx).DebugContext(ctx, "slack message event",
+		telem.String("user", e.User),
+		telem.String("channel", e.Channel),
+		telem.String("subtype", e.SubType),
+		telem.String("thread_ts", e.ThreadTimeStamp),
+		telem.String("ts", e.TimeStamp),
+	)
 
 	if e.SubType == "message_changed" {
 		return m.handleMessageChanged(ctx, e)
 	}
 
 	if e.User == m.botUserID {
-		m.log(ctx).DebugContext(ctx, "slack message ignored: bot self-message", "user", e.User)
+		m.log(ctx).DebugContext(ctx, "slack message ignored: bot self-message", telem.String("user", e.User))
 		return nil
 	}
 	ctx, span := telem.Trace(ctx, spanMessageReceive, messageFields(e)...)
@@ -159,7 +168,11 @@ func (m *Module) handleConnectionError(ctx context.Context, evt socketmode.Event
 	if e.ErrorObj == nil {
 		return fmt.Errorf("slack: connection error event missing cause")
 	}
-	m.log(ctx).WarnContext(ctx, "slack socket connection error", "attempt", e.Attempt, "backoff", e.Backoff, "err", e.ErrorObj)
+	m.log(ctx).WarnContext(ctx, "slack socket connection error",
+		telem.Int("attempt", e.Attempt),
+		telem.Any("backoff", e.Backoff),
+		telem.Any("err", e.ErrorObj),
+	)
 	return nil
 }
 

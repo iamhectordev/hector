@@ -3,8 +3,8 @@ package tools
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -12,7 +12,6 @@ import (
 type Module struct {
 	bus      *waffle.EventBus
 	registry *Registry
-	logger   *slog.Logger
 }
 
 func NewModule(bus *waffle.EventBus, registry *Registry) (*Module, error) {
@@ -22,7 +21,6 @@ func NewModule(bus *waffle.EventBus, registry *Registry) (*Module, error) {
 	m := &Module{
 		bus:      bus,
 		registry: registry,
-		logger:   slog.Default().With("component", "module", "module", "tools"),
 	}
 	return m, nil
 }
@@ -31,7 +29,7 @@ func (m *Module) Name() string { return "tools" }
 
 func (m *Module) Init(ctx context.Context) error {
 	if err := waffle.On(m.bus, CallRequested).Handle("tools.call_requested", m.onCallRequested); err != nil {
-		m.log(ctx).ErrorContext(ctx, "failed to register tool call listener", "err", err)
+		m.log(ctx).ErrorContext(ctx, "failed to register tool call listener", telem.Any("err", err))
 		return err
 	}
 	m.log(ctx).InfoContext(ctx, "tools listener registered")
@@ -40,7 +38,7 @@ func (m *Module) Init(ctx context.Context) error {
 
 func (m *Module) Start(ctx context.Context) error {
 	<-ctx.Done()
-	m.log(ctx).InfoContext(ctx, "tools module stopping", "cause", context.Cause(ctx))
+	m.log(ctx).InfoContext(ctx, "tools module stopping", telem.Any("cause", context.Cause(ctx)))
 	return nil
 }
 
@@ -68,4 +66,9 @@ func (m *Module) complete(ctx context.Context, callID, output, errorText string)
 	}))
 }
 
-func (m *Module) log(context.Context) *slog.Logger { return m.logger }
+func (m *Module) log(ctx context.Context) telem.ContextLogger {
+	return telem.Logger(ctx).With(
+		telem.String("component", "module"),
+		telem.String("module", "tools"),
+	)
+}

@@ -3,8 +3,8 @@ package slack
 import (
 	"context"
 	"io"
-	"log/slog"
 
+	"github.com/iamhectordev/hector/pkg/telem"
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/sourcegraph/conc/pool"
@@ -57,7 +57,10 @@ func (e MessageEnricher) enrichSender(ctx context.Context, data *MessageReceived
 	}
 	user, err := e.api.GetUserInfoContext(ctx, data.Sender.ID)
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get user info", "err", err, "user", data.Sender.ID)
+		e.log(ctx).WarnContext(ctx, "failed to get user info",
+			telem.Any("err", err),
+			telem.String("user", data.Sender.ID),
+		)
 		return
 	}
 	name := user.Profile.DisplayName
@@ -77,7 +80,10 @@ func (e MessageEnricher) enrichChannel(ctx context.Context, data *MessageReceive
 		IncludeNumMembers: true,
 	})
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get conversation info", "err", err, "channel", data.Channel.ID)
+		e.log(ctx).WarnContext(ctx, "failed to get conversation info",
+			telem.Any("err", err),
+			telem.String("channel", data.Channel.ID),
+		)
 		return
 	}
 	data.Channel.Name = channel.Name
@@ -94,15 +100,22 @@ func (e MessageEnricher) enrichReactions(ctx context.Context, data *MessageRecei
 		slackgo.GetReactionsParameters{Full: true},
 	)
 	if err != nil {
-		e.log(ctx).WarnContext(ctx, "failed to get reactions", "err", err, "channel", data.Channel.ID, "ts", data.TS)
+		e.log(ctx).WarnContext(ctx, "failed to get reactions",
+			telem.Any("err", err),
+			telem.String("channel", data.Channel.ID),
+			telem.String("ts", data.TS),
+		)
 		data.Reactions.Unavailable = &UnavailableReactions{Reason: err.Error()}
 		return
 	}
 	data.Reactions = reactionsFromSlack(item, e.botUserID)
 }
 
-func (e MessageEnricher) log(context.Context) *slog.Logger {
-	return slog.Default().With("component", "module", "module", "slack")
+func (e MessageEnricher) log(ctx context.Context) telem.ContextLogger {
+	return telem.Logger(ctx).With(
+		telem.String("component", "module"),
+		telem.String("module", "slack"),
+	)
 }
 
 func reactionsFromSlack(item slackgo.ReactedItem, botUserID string) Reactions {

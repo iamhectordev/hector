@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	islack "github.com/iamhectordev/hector/internal/slack"
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
@@ -28,7 +28,6 @@ type Module struct {
 	appToken    string
 	botToken    string
 	apiURL      string
-	logger      *slog.Logger
 	api         *slackgo.Client
 	client      *socketmode.Client
 	botUserID   string
@@ -52,7 +51,6 @@ func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module,
 		appToken:    cfg.AppToken,
 		botToken:    cfg.BotToken,
 		apiURL:      cfg.APIURL,
-		logger:      slog.Default().With("component", "module", "module", "slack"),
 		eventLogger: eventLogger,
 	}
 	for _, opt := range opts {
@@ -78,7 +76,11 @@ func (m *Module) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("slack: auth test: %w", err)
 	}
-	m.log(ctx).InfoContext(ctx, "slack auth verified", "team_id", auth.TeamID, "user_id", auth.UserID, "bot_id", auth.BotID)
+	m.log(ctx).InfoContext(ctx, "slack auth verified",
+		telem.String("team_id", auth.TeamID),
+		telem.String("user_id", auth.UserID),
+		telem.String("bot_id", auth.BotID),
+	)
 	m.api = api
 	m.botUserID = auth.UserID
 	m.client = socketmode.New(api)
@@ -118,7 +120,7 @@ func (m *Module) run(ctx context.Context, client *socketmode.Client) error {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("slack: stop after run error: %w", err)
 		}
-		m.log(ctx).InfoContext(ctx, "slack module stopping", "cause", context.Cause(ctx))
+		m.log(ctx).InfoContext(ctx, "slack module stopping", telem.Any("cause", context.Cause(ctx)))
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -145,7 +147,7 @@ func (m *Module) eventLoop(ctx context.Context, client *socketmode.Client) error
 				return fmt.Errorf("slack: events channel closed")
 			}
 			if err := m.eventLogger.Log(ctx, evt); err != nil {
-				m.log(ctx).WarnContext(ctx, "slack event log failed", "err", err)
+				m.log(ctx).WarnContext(ctx, "slack event log failed", telem.Any("err", err))
 			}
 			if err := m.handleSocketEvent(ctx, client, evt); err != nil {
 				return err
@@ -154,6 +156,9 @@ func (m *Module) eventLoop(ctx context.Context, client *socketmode.Client) error
 	}
 }
 
-func (m *Module) log(context.Context) *slog.Logger {
-	return m.logger
+func (m *Module) log(ctx context.Context) telem.ContextLogger {
+	return telem.Logger(ctx).With(
+		telem.String("component", "module"),
+		telem.String("module", "slack"),
+	)
 }

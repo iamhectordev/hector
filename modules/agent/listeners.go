@@ -9,6 +9,7 @@ import (
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
@@ -123,7 +124,11 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 
 	if err := m.handle(ctx, agentCtx, system, []*schema.Message{schema.UserMessage(content)}); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process tui message",
-			"event_id", e.ID(), "event_type", e.Type(), "text_len", len(text), "err", err)
+			telem.String("event_id", e.ID()),
+			telem.String("event_type", e.Type()),
+			telem.Int("text_len", len(text)),
+			telem.Any("err", err),
+		)
 		return err
 	}
 	return nil
@@ -176,7 +181,11 @@ func (m *Module) processSlackMessage(ctx context.Context, eventID, eventType, lo
 
 	if err := m.handle(ctx, agentCtx, system, slackUserMessages(content, images)); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process "+logLabel,
-			"event_id", eventID, "event_type", eventType, "text_len", len(text), "err", err)
+			telem.String("event_id", eventID),
+			telem.String("event_type", eventType),
+			telem.Int("text_len", len(text)),
+			telem.Any("err", err),
+		)
 		return err
 	}
 	return nil
