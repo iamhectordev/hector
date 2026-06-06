@@ -1,11 +1,16 @@
 package memory
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Object is a unit of stored knowledge.
 type Object struct {
-	ID      string
-	Content string
+	ID        string
+	Content   string
+	SessionID string
+	CreatedAt time.Time
 }
 
 // Store persists and retrieves memory objects.

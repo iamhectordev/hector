@@ -28,5 +28,11 @@ func Migrations() migrations.MigrationSet {
 	vec BLOB NOT NULL
 )`,
 		},
+		migrations.Migration{
+			Version: 4,
+			Name:    "add_session_and_time",
+			SQL: `ALTER TABLE memory_objects ADD COLUMN session_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE memory_objects ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
+		},
 	)
 }

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"time"
 
 	"github.com/iamhectordev/hector/internal/ulid"
 	"github.com/iamhectordev/hector/modules/agent"
@@ -90,10 +91,13 @@ func (m *Module) onTurnEnd(ctx context.Context, e waffle.Event[agent.TurnEndData
 		return nil
 	}
 
+	now := time.Now().UTC()
 	for _, obj := range result.Objects {
 		if err := m.store.Put(ctx, pkgmem.Object{
-			ID:      ulid.New("mem"),
-			Content: obj.Content,
+			ID:        ulid.New("mem"),
+			Content:   obj.Content,
+			SessionID: data.SessionID,
+			CreatedAt: now,
 		}); err != nil {
 			m.log(ctx).WarnContext(ctx, "memory: failed to store object", telem.Any("err", err))
 		}

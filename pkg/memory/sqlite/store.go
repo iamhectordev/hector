@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/iamhectordev/hector/pkg/memory"
@@ -56,9 +57,13 @@ func (s *Store) Put(ctx context.Context, obj memory.Object) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	createdAt := obj.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT OR REPLACE INTO memory_objects (id, content) VALUES (?, ?)`,
-		obj.ID, obj.Content,
+		`INSERT OR REPLACE INTO memory_objects (id, content, session_id, created_at) VALUES (?, ?, ?, ?)`,
+		obj.ID, obj.Content, obj.SessionID, createdAt.UTC().Format(time.RFC3339),
 	); err != nil {
 		return fmt.Errorf("memory/sqlite: put object: %w", err)
 	}
@@ -93,7 +98,10 @@ func (s *Store) Put(ctx context.Context, obj memory.Object) error {
 // Search returns objects whose content matches query, ordered by FTS rank.
 func (s *Store) Search(ctx context.Context, query string, limit int) ([]memory.Object, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, content FROM memory_objects_fts WHERE content MATCH ? ORDER BY rank LIMIT ?`,
+		`SELECT f.id, o.content, o.session_id, o.created_at
+		 FROM memory_objects_fts f
+		 JOIN memory_objects o ON o.id = f.id
+		 WHERE f.content MATCH ? ORDER BY rank LIMIT ?`,
 		sanitizeFTSQuery(query), limit,
 	)
 	if err != nil {
@@ -107,8 +115,12 @@ func (s *Store) Search(ctx context.Context, query string, limit int) ([]memory.O
 	var out []memory.Object
 	for rows.Next() {
 		var obj memory.Object
-		if err := rows.Scan(&obj.ID, &obj.Content); err != nil {
+		var createdAt string
+		if err := rows.Scan(&obj.ID, &obj.Content, &obj.SessionID, &createdAt); err != nil {
 			return nil, fmt.Errorf("memory/sqlite: scan object: %w", err)
+		}
+		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
+			obj.CreatedAt = t
 		}
 		out = append(out, obj)
 	}

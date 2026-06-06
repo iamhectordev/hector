@@ -7,6 +7,7 @@ var TurnEnd = mustDefine[TurnEndData]("agent.turn_end", 1)
 
 // TurnEndData is the payload for TurnEnd.
 type TurnEndData struct {
+	SessionID  string
 	SourceURI  string
 	TurnOffset int // index into session history where this turn's new messages start
 }

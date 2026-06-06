@@ -84,7 +84,14 @@ func (m *Module) handle(ctx context.Context, agentCtx Context, system string, me
 	}
 
 	sess, _ := session.From(ctx)
+	var sessionID string
+	if m.sessions != nil {
+		if stored, err := m.sessions.GetOrCreate(ctx, sess.SourceURI); err == nil {
+			sessionID = stored.ID
+		}
+	}
 	if recordErr := m.bus.Record(ctx, TurnEnd.New(TurnEndData{
+		SessionID:  sessionID,
 		SourceURI:  sess.SourceURI,
 		TurnOffset: turnOffset,
 	})); recordErr != nil {

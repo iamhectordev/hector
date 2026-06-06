@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -87,6 +88,26 @@ func TestStoreSearch_ColumnFilterSyntaxDoesNotCrash(t *testing.T) {
 	results, err := store.Search(ctx, "content:auth", 3)
 	require.NoError(t, err)
 	require.NotEmpty(t, results)
+}
+
+func TestStore_Put_StoresAndReturnsSessionIDAndCreatedAt(t *testing.T) {
+	ctx := t.Context()
+	store := newStore(t)
+
+	now := time.Now().UTC().Truncate(time.Second)
+	obj := memory.Object{
+		ID:        "1",
+		Content:   "the auth service uses go",
+		SessionID: "sess_abc",
+		CreatedAt: now,
+	}
+	require.NoError(t, store.Put(ctx, obj))
+
+	results, err := store.Search(ctx, "auth service", 3)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Equal(t, "sess_abc", results[0].SessionID)
+	require.Equal(t, now, results[0].CreatedAt.UTC().Truncate(time.Second))
 }
 
 func TestStore_Put_StoresVecWhenEmbedderConfigured(t *testing.T) {
