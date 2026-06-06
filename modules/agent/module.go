@@ -77,8 +77,22 @@ func (m *Module) newAgentContext(sourceURI string) (Context, error) {
 }
 
 func (m *Module) handle(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) error {
+	history, _ := agentCtx.Messages(ctx)
+	turnOffset := len(history)
+
 	_, err := m.runner.Run(ctx, agentCtx, system, messages)
-	return err
+	if err != nil {
+		return err
+	}
+
+	sess, _ := session.From(ctx)
+	if recordErr := m.bus.Record(ctx, TurnEnd.New(TurnEndData{
+		SourceURI:  sess.SourceURI,
+		TurnOffset: turnOffset,
+	})); recordErr != nil {
+		m.log(ctx).WarnContext(ctx, "failed to record turn_end event", "err", recordErr)
+	}
+	return nil
 }
 
 func (m *Module) log(context.Context) *slog.Logger { return m.logger }

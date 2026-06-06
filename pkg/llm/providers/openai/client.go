@@ -79,9 +79,10 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 	}
 
 	completion, err := c.inner.Chat.Completions.New(ctx, sdkopenai.ChatCompletionNewParams{
-		Model:    sdkopenai.ChatModel(c.model),
-		Messages: params,
-		Tools:    tools,
+		Model:      sdkopenai.ChatModel(c.model),
+		Messages:   params,
+		Tools:      tools,
+		ToolChoice: mapToolChoice(req.ToolChoice, toolNames),
 	})
 	if err != nil {
 		return nil, err
@@ -202,6 +203,17 @@ func mapTools(defs []schema.ToolDefinition) (toolNameMaps, []sdkopenai.ChatCompl
 		}))
 	}
 	return names, tools, nil
+}
+
+func mapToolChoice(tc *schema.ToolChoice, names toolNameMaps) sdkopenai.ChatCompletionToolChoiceOptionUnionParam {
+	if tc == nil {
+		return sdkopenai.ChatCompletionToolChoiceOptionUnionParam{}
+	}
+	mapped := openAIToolName(tc.Name)
+	if existing, ok := names.toOpenAI[tc.Name]; ok {
+		mapped = existing
+	}
+	return sdkopenai.ToolChoiceOptionFunctionToolChoice(sdkopenai.ChatCompletionNamedToolChoiceFunctionParam{Name: mapped})
 }
 
 func openAIToolName(name string) string {

@@ -12,6 +12,7 @@ import (
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
+	memorymod "github.com/iamhectordev/hector/modules/memory"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
 	githubtools "github.com/iamhectordev/hector/modules/tools/github"
@@ -108,11 +109,15 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	toolRegistry, toolsModule, err := r.initTools(replyHandlers, webSearch)
+	memStore, err := r.initMemoryStore()
 	if err != nil {
 		return err
 	}
-	modules, err := r.initModules(ctx, completer, toolRegistry, toolsModule, surfaces)
+	toolRegistry, toolsModule, err := r.initTools(replyHandlers, webSearch, memStore)
+	if err != nil {
+		return err
+	}
+	modules, err := r.initModules(ctx, completer, toolRegistry, toolsModule, surfaces, memStore)
 	if err != nil {
 		return err
 	}
@@ -164,7 +169,7 @@ func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, err
 	}
 }
 
-func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.Tool) (*tools.Registry, *tools.Module, error) {
+func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.Tool, memStore *memorysqlite.Store) (*tools.Registry, *tools.Module, error) {
 	replyRouter, err := comms.NewReplyRouter(replyHandlers...)
 	if err != nil {
 		return nil, nil, err
@@ -178,10 +183,6 @@ func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.
 		return nil, nil, err
 	}
 	webFetch, err := web.NewFetch(httpClient)
-	if err != nil {
-		return nil, nil, err
-	}
-	memStore, err := r.initMemoryStore()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,6 +207,7 @@ func (r *Runtime) initModules(
 	toolRegistry *tools.Registry,
 	toolsModule *tools.Module,
 	surfaces []supervisor.Module,
+	memStore *memorysqlite.Store,
 ) ([]supervisor.Module, error) {
 	modules := []supervisor.Module{}
 	if r.cfg.GitHub.Enabled {
@@ -216,17 +218,18 @@ func (r *Runtime) initModules(
 		r.githubCloser = githubCloser
 	}
 
+	sessionStore := sessionsqlite.NewStore(r.db)
 	loop := agent.NewLoop(completer,
 		agent.WithTools(toolRegistry),
 		agent.WithLogger(r.logger.With("component", "loop")),
 	)
-	sessionStore := sessionsqlite.NewStore(r.db)
 	modules = append(modules,
 		agent.NewModule(r.bus, loop,
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(sessionStore),
 		),
 		toolsModule,
+		memorymod.NewModule(r.bus, memStore, sessionStore, completer),
 	)
 	modules = append(modules, surfaces...)
 	return modules, nil
