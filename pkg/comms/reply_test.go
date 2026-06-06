@@ -8,6 +8,7 @@ import (
 
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/stretchr/testify/require"
 )
 
@@ -72,4 +73,26 @@ func TestReplyRouter_UnknownScheme_EnvelopesError(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "error", envelopeStatus(t, out))
+}
+
+func TestReplyRouter_TracesRoute(t *testing.T) {
+	recorder := newSpanRecorder(t)
+	slack := &fakeHandler{scheme: "slack"}
+	router, err := comms.NewReplyRouter(slack)
+	require.NoError(t, err)
+
+	ctx := session.With(t.Context(), session.Session{
+		SourceURI: session.NewSourceURI("slack", "channels", "D123"),
+	})
+	ctx, parent := telem.Trace(ctx, "tool.call")
+	args, _ := json.Marshal(map[string]string{"text": "hello"})
+	out, err := router.Run(ctx, args)
+	parent.End(nil)
+
+	require.NoError(t, err)
+	require.Equal(t, "ok", envelopeStatus(t, out))
+
+	span := findSpan(t, recorder.Ended(), "tool.reply.route")
+	require.Equal(t, parent.SpanContext().SpanID(), span.Parent().SpanID())
+	require.Equal(t, "slack", requireSpanAttr(t, span, "surface.name"))
 }

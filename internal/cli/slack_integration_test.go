@@ -218,6 +218,8 @@ func TestSlack_DMMessage_TraceShape(t *testing.T) {
 			"agent.turn.run",
 			"llm.complete",
 			"tool.call",
+			"tool.registry.run",
+			"tool.reply.route",
 			"slack.reply.send",
 		)
 	}, 2*time.Second, 20*time.Millisecond)
@@ -230,6 +232,8 @@ func TestSlack_DMMessage_TraceShape(t *testing.T) {
 		"agent.turn.run",
 		"llm.complete",
 		"tool.call",
+		"tool.registry.run",
+		"tool.reply.route",
 		"slack.reply.send",
 	)
 	requireSpanAttr(t, spans, "llm.complete", "llm.provider", "echo")
@@ -692,7 +696,9 @@ func requireTraceTree(t *testing.T, spans []sdktrace.ReadOnlySpan, names ...stri
 	agentTurn := requireChildSpan(t, spans, reactionRun, "agent.turn.run")
 	requireChildSpan(t, spans, agentTurn, "llm.complete")
 	toolCall := requireChildSpan(t, spans, agentTurn, "tool.call")
-	requireChildSpan(t, spans, toolCall, "slack.reply.send")
+	registryRun := requireChildSpan(t, spans, toolCall, "tool.registry.run")
+	replyRoute := requireChildSpan(t, spans, registryRun, "tool.reply.route")
+	requireChildSpan(t, spans, replyRoute, "slack.reply.send")
 }
 
 func requireSpan(t *testing.T, spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {

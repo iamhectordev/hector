@@ -8,6 +8,7 @@ import (
 
 	internalfetch "github.com/iamhectordev/hector/internal/web/fetch"
 	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Fetcher is the interface for core fetch logic.
@@ -57,13 +58,18 @@ func (f *Fetch) Definition() tools.Definition {
 }
 
 func (f *Fetch) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	var err error
 	var in fetchInput
-	if err := json.Unmarshal(args, &in); err != nil {
+	if err = json.Unmarshal(args, &in); err != nil {
+		err = errors.New("invalid_args: " + err.Error())
 		return tools.Fail("invalid_args: " + err.Error())
 	}
+	ctx, span := telem.Trace(ctx, spanFetch)
+	defer span.End(&err)
 	result, err := f.fetcher.Fetch(ctx, in.URL)
 	if err != nil {
 		return tools.Fail(err.Error())
 	}
+	span.AddFields(fetchFields(in.URL, result)...)
 	return tools.OK(result)
 }

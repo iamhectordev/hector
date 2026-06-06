@@ -137,3 +137,21 @@ func TestSearchRunsThroughRegistry(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(out), &env))
 	require.Equal(t, "ok", env.Status, "message=%s", env.Message)
 }
+
+func TestSearchRunTracesQueryMetadata(t *testing.T) {
+	recorder := newSpanRecorder(t)
+	tool, err := web.NewSearch(&fakeSearcher{results: []internalsearch.Result{{
+		Provider: internalsearch.ProviderTavily,
+		URL:      "https://example.com/result",
+	}}})
+	require.NoError(t, err)
+
+	out, err := tool.Run(t.Context(), json.RawMessage(`{"query":"registered search"}`))
+	require.NoError(t, err)
+	require.NotEmpty(t, out)
+
+	span := findSpan(t, recorder.Ended(), "web.search")
+	require.Equal(t, "tavily", requireSpanAttr(t, span, "web.provider"))
+	require.Equal(t, int64(len("registered search")), requireSpanAttrInt(t, span, "web.query_length"))
+	require.Equal(t, int64(1), requireSpanAttrInt(t, span, "web.result_count"))
+}

@@ -8,6 +8,7 @@ import (
 
 	internalsearch "github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 type Searcher interface {
@@ -31,14 +32,23 @@ func NewSearch(searcher Searcher) (tools.Tool, error) {
 		"web_search",
 		"Searches the web through the configured provider. Returns source candidates with URL, title, snippet, provider, and score; does not fetch full pages or summarize results.",
 		func(ctx context.Context, in searchInput) (searchPayload, error) {
+			var err error
 			query := strings.TrimSpace(in.Query)
 			if query == "" {
+				err = fmt.Errorf("invalid_query: query is required")
 				return searchPayload{}, fmt.Errorf("invalid_query: query is required")
 			}
+			ctx, span := telem.Trace(ctx, spanSearch, searchFields("", query, 0)...)
+			defer span.End(&err)
 			results, err := searcher.Search(ctx, query)
 			if err != nil {
 				return searchPayload{}, err
 			}
+			provider := internalsearch.ProviderName("")
+			if len(results) > 0 {
+				provider = results[0].Provider
+			}
+			span.AddFields(searchFields(provider, query, len(results))...)
 			return searchPayload{Query: query, Results: results}, nil
 		},
 	)

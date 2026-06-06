@@ -238,6 +238,31 @@ func TestStoreRecordRejectsNilMessage(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestStoreTracesLoadAndRecord(t *testing.T) {
+	ctx := t.Context()
+	db := openTestDB(t)
+	migrate(t, db)
+	recorder := newSpanRecorder(t)
+
+	store := sqlite.NewStore(db)
+	require.NoError(t, store.Record(ctx, "slack://C123/1", []*schema.Message{
+		schema.UserMessage("one"),
+		schema.AssistantMessage("two"),
+	}))
+
+	got, err := store.Messages(ctx, "slack://C123/1")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	recordSpan := findSpan(t, recorder.Ended(), "session.record")
+	require.Equal(t, "slack", requireSpanAttr(t, recordSpan, "session.source_scheme"))
+	require.Equal(t, int64(2), requireSpanAttrInt(t, recordSpan, "session.message_count"))
+
+	loadSpan := findSpan(t, recorder.Ended(), "session.load")
+	require.Equal(t, "slack", requireSpanAttr(t, loadSpan, "session.source_scheme"))
+	require.Equal(t, int64(2), requireSpanAttrInt(t, loadSpan, "session.message_count"))
+}
+
 func scanMessages(t *testing.T, rows *sql.Rows) []schema.Message {
 	t.Helper()
 

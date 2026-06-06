@@ -11,6 +11,7 @@ import (
 
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -49,6 +50,9 @@ func (s *Store) GetOrCreate(ctx context.Context, sourceURI string) (session.Stor
 
 // Messages returns the recorded transcript for sourceURI in append order.
 func (s *Store) Messages(ctx context.Context, sourceURI string) ([]*schema.Message, error) {
+	var err error
+	ctx, span := telem.Trace(ctx, spanSessionLoad, sessionFields(sourceURI)...)
+	defer span.End(&err)
 	if strings.TrimSpace(sourceURI) == "" {
 		return nil, fmt.Errorf("session/sqlite: source URI is required")
 	}
@@ -59,7 +63,7 @@ FROM session_records r
 JOIN session_sessions s ON s.id = r.session_id
 WHERE s.source_uri = ?
 ORDER BY r.seq ASC
-`, sourceURI)
+	`, sourceURI)
 	if err != nil {
 		return nil, fmt.Errorf("session/sqlite: list messages: %w", err)
 	}
@@ -81,11 +85,15 @@ ORDER BY r.seq ASC
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("session/sqlite: list messages rows: %w", err)
 	}
+	span.AddFields(telem.Int("session.message_count", len(out)))
 	return out, nil
 }
 
 // Record appends messages to the transcript for sourceURI.
 func (s *Store) Record(ctx context.Context, sourceURI string, messages []*schema.Message) error {
+	var err error
+	ctx, span := telem.Trace(ctx, spanSessionRecord, append(sessionFields(sourceURI), telem.Int("session.message_count", len(messages)))...)
+	defer span.End(&err)
 	if len(messages) == 0 {
 		return nil
 	}

@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/iamhectordev/hector/pkg/llm/schema"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 var toolNameSnakeCase = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -62,8 +63,10 @@ func (r *Registry) Definitions() []schema.ToolDefinition {
 	return defs
 }
 
-func (r *Registry) Run(ctx context.Context, name string, args json.RawMessage) (string, error) {
+func (r *Registry) Run(ctx context.Context, name string, args json.RawMessage) (out string, err error) {
 	tool, ok := r.tools[name]
+	ctx, span := telem.Trace(ctx, spanRegistryRun, registryFields(name, ok)...)
+	defer span.End(&err)
 	if !ok {
 		return "", fmt.Errorf("unknown tool %q", name)
 	}

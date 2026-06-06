@@ -8,6 +8,7 @@ import (
 
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // ReplyHandler sends a text reply to a specific surface scheme.
@@ -53,28 +54,39 @@ func (r *ReplyRouter) Definition() tools.Definition {
 }
 
 func (r *ReplyRouter) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	var err error
+	ctx, span := telem.Trace(ctx, spanReplyRoute)
+	defer span.End(&err)
+
 	var input replyInput
-	if err := json.Unmarshal(args, &input); err != nil {
+	if err = json.Unmarshal(args, &input); err != nil {
+		err = fmt.Errorf("invalid args: %w", err)
 		return tools.Fail(fmt.Sprintf("invalid args: %s", err))
 	}
 
 	sess, ok := session.From(ctx)
 	if !ok {
+		err = fmt.Errorf("no session in context")
 		return tools.Fail("no session in context")
 	}
 
 	uri, err := session.ParseSourceURI(sess.SourceURI)
 	if err != nil {
+		err = fmt.Errorf("parse source uri: %w", err)
 		return tools.Fail(err.Error())
 	}
+	span.AddFields(replyRouteFields(sess.SourceURI, uri)...)
 
 	h, ok := r.handlers[uri.Scheme]
 	if !ok {
+		err = fmt.Errorf("no handler for scheme %q", uri.Scheme)
 		return tools.Fail(fmt.Sprintf("no handler for scheme %q", uri.Scheme))
 	}
 
-	if err := h.Reply(ctx, uri, input.Text); err != nil {
-		return tools.Fail(err.Error())
+	replyErr := h.Reply(ctx, uri, input.Text)
+	if replyErr != nil {
+		err = fmt.Errorf("reply handler: %w", replyErr)
+		return tools.Fail(replyErr.Error())
 	}
 	return tools.OK("sent")
 }

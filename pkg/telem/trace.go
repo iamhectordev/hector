@@ -33,6 +33,16 @@ func (s Span) End(err *error) {
 	s.inner.End()
 }
 
+// AddFields adds attributes to an existing span.
+func (s Span) AddFields(fields ...Field) {
+	s.inner.SetAttributes(attrs(fields)...)
+}
+
+// SpanContext returns the wrapped span context.
+func (s Span) SpanContext() trace.SpanContext {
+	return s.inner.SpanContext()
+}
+
 // Event adds a named event to the current span.
 func Event(ctx context.Context, name string, fields ...Field) {
 	trace.SpanFromContext(ctx).AddEvent(name, trace.WithAttributes(attrs(fields)...))

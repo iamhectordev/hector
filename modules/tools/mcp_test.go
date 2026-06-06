@@ -33,6 +33,26 @@ func TestMCPToolAdapterNormalizesNameAndCallsOriginalTool(t *testing.T) {
 	require.JSONEq(t, `{"owner":"iamhectordev"}`, string(client.calledArgs))
 }
 
+func TestMCPToolRunTracesCall(t *testing.T) {
+	client := &fakeMCPClient{}
+	tool, err := tools.NewMCPTool("github", client, mcp.Tool{
+		Name:        "repos.list",
+		Description: "Lists repositories.",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"owner":{"type":"string"}}}`),
+	})
+	require.NoError(t, err)
+	recorder := newSpanRecorder(t)
+
+	output, err := tool.Run(t.Context(), json.RawMessage(`{"owner":"iamhectordev"}`))
+	require.NoError(t, err)
+	require.NotEmpty(t, output)
+
+	span := findSpan(t, recorder.Ended(), "github.mcp.call")
+	require.Equal(t, "github", requireSpanAttr(t, span, "mcp.server"))
+	require.Equal(t, "repos.list", requireSpanAttr(t, span, "mcp.tool_name"))
+	require.Equal(t, int64(1), requireSpanAttrInt(t, span, "mcp.content_count"))
+}
+
 type fakeMCPClient struct {
 	calledName string
 	calledArgs json.RawMessage

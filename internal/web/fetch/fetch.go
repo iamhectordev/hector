@@ -19,11 +19,13 @@ import (
 )
 
 type Result struct {
-	URL         string `json:"url"`
-	FinalURL    string `json:"final_url"`
-	Title       string `json:"title"`
-	ContentType string `json:"content_type"`
-	Content     string `json:"content"`
+	URL            string `json:"url"`
+	FinalURL       string `json:"final_url"`
+	Title          string `json:"title"`
+	ContentType    string `json:"content_type"`
+	Content        string `json:"content"`
+	HTTPStatusCode int    `json:"-"`
+	ContentBytes   int    `json:"-"`
 }
 
 type contentKind string
@@ -81,19 +83,23 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Result, error) {
 
 	if kind == contentKindMarkdown {
 		return Result{
-			URL:         rawURL,
-			FinalURL:    resp.Request.URL.String(),
-			ContentType: "markdown",
-			Content:     string(body),
+			URL:            rawURL,
+			FinalURL:       resp.Request.URL.String(),
+			ContentType:    "markdown",
+			Content:        string(body),
+			HTTPStatusCode: resp.StatusCode,
+			ContentBytes:   len(body),
 		}, nil
 	}
 
 	if kind == contentKindText {
 		return Result{
-			URL:         rawURL,
-			FinalURL:    resp.Request.URL.String(),
-			ContentType: "text",
-			Content:     string(body),
+			URL:            rawURL,
+			FinalURL:       resp.Request.URL.String(),
+			ContentType:    "text",
+			Content:        string(body),
+			HTTPStatusCode: resp.StatusCode,
+			ContentBytes:   len(body),
 		}, nil
 	}
 
@@ -117,11 +123,13 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) (Result, error) {
 	}
 
 	return Result{
-		URL:         rawURL,
-		FinalURL:    resp.Request.URL.String(),
-		Title:       article.Title,
-		ContentType: "markdown",
-		Content:     md,
+		URL:            rawURL,
+		FinalURL:       resp.Request.URL.String(),
+		Title:          article.Title,
+		ContentType:    "markdown",
+		Content:        md,
+		HTTPStatusCode: resp.StatusCode,
+		ContentBytes:   len(body),
 	}, nil
 }
 
@@ -152,10 +160,12 @@ func (f *Fetcher) fetchMarkdownAlternate(ctx context.Context, originalURL string
 	}
 
 	return Result{
-		URL:         originalURL,
-		FinalURL:    resp.Request.URL.String(),
-		ContentType: "markdown",
-		Content:     string(body),
+		URL:            originalURL,
+		FinalURL:       resp.Request.URL.String(),
+		ContentType:    "markdown",
+		Content:        string(body),
+		HTTPStatusCode: resp.StatusCode,
+		ContentBytes:   len(body),
 	}, true
 }
 

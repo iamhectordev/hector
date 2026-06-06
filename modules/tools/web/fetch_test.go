@@ -102,3 +102,26 @@ func TestFetch_RunRejectsInvalidArgs(t *testing.T) {
 	require.Equal(t, "error", env.Status)
 	require.Contains(t, env.Message, "invalid_args:")
 }
+
+func TestFetchRunTracesFetchMetadata(t *testing.T) {
+	recorder := newSpanRecorder(t)
+	tool, err := web.NewFetchWithFetcher(&fakeFetcher{result: internalfetch.Result{
+		URL:            "https://example.com",
+		FinalURL:       "https://example.com/final",
+		ContentType:    "markdown",
+		Content:        "# Example",
+		HTTPStatusCode: 200,
+		ContentBytes:   321,
+	}})
+	require.NoError(t, err)
+
+	out, err := tool.Run(t.Context(), json.RawMessage(`{"url":"https://example.com/path?q=1"}`))
+	require.NoError(t, err)
+	require.NotEmpty(t, out)
+
+	span := findSpan(t, recorder.Ended(), "web.fetch")
+	require.Equal(t, "example.com", requireSpanAttr(t, span, "url.host"))
+	require.Equal(t, "markdown", requireSpanAttr(t, span, "web.content_type"))
+	require.Equal(t, int64(200), requireSpanAttrInt(t, span, "http.status_code"))
+	require.Equal(t, int64(321), requireSpanAttrInt(t, span, "web.content_bytes"))
+}

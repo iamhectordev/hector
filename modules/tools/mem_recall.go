@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/iamhectordev/hector/pkg/memory"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 type memorySearcher interface {
@@ -41,25 +42,36 @@ func (t *MemRecallTool) Definition() Definition {
 }
 
 func (t *MemRecallTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	var err error
 	var input memRecallInput
-	if err := json.Unmarshal(args, &input); err != nil {
+	if err = json.Unmarshal(args, &input); err != nil {
+		err = fmt.Errorf("invalid args: %w", err)
 		return Fail(fmt.Sprintf("invalid args: %s", err))
 	}
-	if strings.TrimSpace(input.Query) == "" {
+	query := strings.TrimSpace(input.Query)
+	if query == "" {
+		err = fmt.Errorf("query is required")
 		return Fail("query is required")
 	}
+	ctx, span := telem.Trace(ctx, spanMemoryRecall, recallFields(query, 0)...)
+	defer span.End(&err)
 
-	results, err := t.store.Search(ctx, input.Query, 3)
+	results, err := t.store.Search(ctx, query, 3)
 	if err != nil {
 		return Fail(err.Error())
 	}
+	span.AddFields(recallFields(query, len(results))...)
 	if len(results) == 0 {
 		return OK("no relevant facts found")
 	}
 
 	var lines []string
 	for _, obj := range results {
-		lines = append(lines, obj.Content)
+		line := obj.Content
+		if !obj.CreatedAt.IsZero() {
+			line = fmt.Sprintf("[%s] %s", obj.CreatedAt.UTC().Format("2006-01-02 15:04 UTC"), obj.Content)
+		}
+		lines = append(lines, line)
 	}
 	return OK(strings.Join(lines, "\n"))
 }

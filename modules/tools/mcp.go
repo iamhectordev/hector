@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/iamhectordev/hector/internal/mcp"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 var nonToolNameChar = regexp.MustCompile(`[^a-z0-9]+`)
@@ -17,6 +18,7 @@ type mcpClient interface {
 }
 
 type MCPTool struct {
+	server      string
 	name        string
 	description string
 	parameters  json.RawMessage
@@ -41,6 +43,7 @@ func NewMCPTool(prefix string, client mcpClient, tool mcp.Tool) (*MCPTool, error
 		parameters = json.RawMessage(`{"type":"object","properties":{}}`)
 	}
 	return &MCPTool{
+		server:      prefix,
 		name:        name,
 		description: description,
 		parameters:  parameters,
@@ -58,13 +61,22 @@ func (t *MCPTool) Definition() Definition {
 }
 
 func (t *MCPTool) Run(ctx context.Context, args json.RawMessage) (string, error) {
+	var err error
 	if len(args) == 0 {
 		args = json.RawMessage(`{}`)
 	}
+	ctx, span := telem.Trace(ctx, spanMCPCall,
+		telem.String("mcp.server", t.server),
+		telem.String("mcp.tool_name", t.mcpName),
+		jsonArgsSize(args),
+	)
+	defer span.End(&err)
 	result, err := t.client.CallTool(ctx, t.mcpName, args)
 	if err != nil {
+		err = fmt.Errorf("mcp call: %w", err)
 		return Fail(err.Error())
 	}
+	span.AddFields(mcpFields(t.server, t.mcpName, result)...)
 	return OK(result)
 }
 

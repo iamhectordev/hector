@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/stretchr/testify/require"
 
 	"github.com/iamhectordev/hector/modules/tools"
@@ -54,6 +55,24 @@ func TestRegistryRunsTimeNow(t *testing.T) {
 	output, err := registry.Run(t.Context(), "time_now", nil)
 	require.NoError(t, err)
 	require.Contains(t, output, "UTC")
+}
+
+func TestRegistryRunTracesExecution(t *testing.T) {
+	recorder := newSpanRecorder(t)
+	registry, err := tools.NewRegistry(echoTool{})
+	require.NoError(t, err)
+
+	ctx, parent := telem.Trace(t.Context(), "tool.call")
+	output, err := registry.Run(ctx, "test_echo", json.RawMessage(`{"value":"hello"}`))
+	parent.End(nil)
+
+	require.NoError(t, err)
+	require.Equal(t, `{"value":"hello"}`, output)
+
+	span := findSpan(t, recorder.Ended(), "tool.registry.run")
+	require.Equal(t, parent.SpanContext().SpanID(), span.Parent().SpanID())
+	require.Equal(t, "test_echo", requireSpanAttr(t, span, "tool.name"))
+	require.True(t, requireSpanAttrBool(t, span, "tool.found"))
 }
 
 func TestRegistryRejectsNonSnakeCaseToolName(t *testing.T) {
