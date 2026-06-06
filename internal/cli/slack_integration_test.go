@@ -5,21 +5,29 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
+	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
+	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
 	"github.com/iamhectordev/hector/modules/agent"
 	slackmodule "github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/comms"
+	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
-	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
+	wafflesqlite "github.com/iamhectordev/hector/pkg/waffle/sqlite"
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
@@ -119,6 +127,114 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
     <r emoji=":thumbsup:" count="5" you="true"></r>
   </reactions>
 </msg>`, req.Messages[0].Content)
+}
+
+func TestSlack_DMMessage_TraceShape(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	otel.SetTracerProvider(provider)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+	t.Cleanup(func() {
+		require.NoError(t, provider.Shutdown(context.Background()))
+	})
+
+	srv := slackmock.New(t)
+	db, err := dbsqlite.Open(ctx, dbsqlite.Config{Path: filepath.Join(t.TempDir(), "hector.db")})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+	require.NoError(t, dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations()))
+
+	bus, err := waffle.NewEventBus(
+		waffle.WithWorkers(2),
+		waffle.WithStore(wafflesqlite.NewStore(db)),
+		waffle.WithPersistentReactions(),
+	)
+	require.NoError(t, err)
+
+	slackMod, err := slackmodule.NewModule(bus, slackmodule.Config{
+		AppToken: "xapp-fake",
+		BotToken: "xoxb-fake",
+		APIURL:   srv.BaseURL() + "/api/",
+	})
+	require.NoError(t, err)
+
+	replyRouter, err := comms.NewReplyRouter(slackMod.NewReplyHandler())
+	require.NoError(t, err)
+	registry, err := tools.NewRegistry(replyRouter)
+	require.NoError(t, err)
+	completer, err := llm.New(llm.Config{DefaultProvider: llm.ProviderEcho})
+	require.NoError(t, err)
+
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, agent.NewLoop(completer, agent.WithTools(registry)),
+			agent.WithBaseSystem(agent.SystemPrompt),
+			agent.WithSessionStore(noopSessionStore{}),
+		),
+		slackMod,
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
+	require.NoError(t, err)
+	go sv.Run(ctx)
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, bus.Shutdown(context.Background()))
+	})
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Test User"},
+		},
+	})
+	srv.ExpectWithResponse("reactions.get", map[string]any{
+		"ok":      true,
+		"type":    "message",
+		"channel": "D123",
+		"message": map[string]any{"type": "message", "user": "U222", "text": "hi", "ts": "1610241741.000200"},
+	})
+	postMessage := srv.Expect("chat.postMessage")
+
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D123",
+		User:        "U222",
+		Text:        "hi",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+	}))
+	call := postMessage.Require(t, ctx)
+	require.Contains(t, call.Get("text"), "hi")
+
+	require.Eventually(t, func() bool {
+		return traceHasSpanNames(recorder.Ended(),
+			"slack.message.receive",
+			"waffle.event.record",
+			"waffle.reaction.run",
+			"agent.turn.run",
+			"llm.complete",
+			"tool.call",
+			"slack.reply.send",
+		)
+	}, 2*time.Second, 20*time.Millisecond)
+
+	spans := recorder.Ended()
+	requireTraceTree(t, spans,
+		"slack.message.receive",
+		"waffle.event.record",
+		"waffle.reaction.run",
+		"agent.turn.run",
+		"llm.complete",
+		"tool.call",
+		"slack.reply.send",
+	)
+	requireSpanAttr(t, spans, "llm.complete", "llm.provider", "echo")
+	requireSpanAttr(t, spans, "waffle.reaction.run", "waffle.reaction.id", "")
+	requireNoSpanAttrValue(t, spans, "hi")
 }
 
 func TestSlack_DMMessage_ReactionFailureStillReachesAgent(t *testing.T) {
@@ -548,4 +664,88 @@ func (c *captureCompleter) Complete(_ context.Context, req schema.CompletionRequ
 	reply := schema.AssistantMessage("")
 	reply.FinishReason = schema.FinishReasonStop
 	return reply, nil
+}
+
+func traceHasSpanNames(spans []sdktrace.ReadOnlySpan, names ...string) bool {
+	seen := make(map[string]struct{}, len(spans))
+	for _, span := range spans {
+		seen[span.Name()] = struct{}{}
+	}
+	for _, name := range names {
+		if _, ok := seen[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func requireTraceTree(t *testing.T, spans []sdktrace.ReadOnlySpan, names ...string) {
+	t.Helper()
+
+	for _, name := range names {
+		require.True(t, traceHasSpanNames(spans, name), "missing span %q", name)
+	}
+
+	root := requireSpan(t, spans, "slack.message.receive")
+	eventRecord := requireChildSpan(t, spans, root, "waffle.event.record")
+	reactionRun := requireChildSpan(t, spans, eventRecord, "waffle.reaction.run")
+	agentTurn := requireChildSpan(t, spans, reactionRun, "agent.turn.run")
+	requireChildSpan(t, spans, agentTurn, "llm.complete")
+	toolCall := requireChildSpan(t, spans, agentTurn, "tool.call")
+	requireChildSpan(t, spans, toolCall, "slack.reply.send")
+}
+
+func requireSpan(t *testing.T, spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+	t.Fatalf("missing span %q", name)
+	return nil
+}
+
+func requireChildSpan(t *testing.T, spans []sdktrace.ReadOnlySpan, parent sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	parentSpanID := parent.SpanContext().SpanID().String()
+	traceID := parent.SpanContext().TraceID().String()
+	for _, span := range spans {
+		if span.Name() == name && span.Parent().SpanID().String() == parentSpanID {
+			require.Equal(t, traceID, span.SpanContext().TraceID().String(), "span %q should be in the same trace", name)
+			return span
+		}
+	}
+	t.Fatalf("missing child span %q under %q", name, parent.Name())
+	return nil
+}
+
+func requireSpanAttr(t *testing.T, spans []sdktrace.ReadOnlySpan, spanName, key, want string) {
+	t.Helper()
+	for _, span := range spans {
+		if span.Name() != spanName {
+			continue
+		}
+		for _, attr := range span.Attributes() {
+			if string(attr.Key) != key {
+				continue
+			}
+			if want == "" {
+				require.NotEmpty(t, attr.Value.AsString())
+			} else {
+				require.Equal(t, want, attr.Value.AsString())
+			}
+			return
+		}
+	}
+	t.Fatalf("missing attr %q on span %q", key, spanName)
+}
+
+func requireNoSpanAttrValue(t *testing.T, spans []sdktrace.ReadOnlySpan, forbidden string) {
+	t.Helper()
+	for _, span := range spans {
+		for _, attr := range span.Attributes() {
+			require.NotEqual(t, forbidden, attr.Value.AsString(), "raw content leaked on span %q attr %q", span.Name(), attr.Key)
+		}
+	}
 }

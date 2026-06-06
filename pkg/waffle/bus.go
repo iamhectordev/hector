@@ -10,6 +10,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // ErrClosed is returned when recording to a shut down bus.
@@ -77,7 +79,10 @@ func (b *EventBus) Reader() *Reader {
 }
 
 // Record appends an event and queues matching handlers.
-func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
+func (b *EventBus) Record(ctx context.Context, event AnyEvent) (err error) {
+	ctx, span := telem.Trace(ctx, spanEventRecord, eventFields(event)...)
+	defer span.End(&err)
+
 	b.stateMu.RLock()
 	defer b.stateMu.RUnlock()
 
@@ -105,8 +110,9 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) error {
 	b.mu.Lock()
 	handlers := append([]registeredHandler(nil), b.handlers[event.Type()]...)
 	b.mu.Unlock()
+	telem.Event(ctx, "waffle.handlers.selected", telem.Int("waffle.handler.count", len(handlers)))
 
-	if err := b.dispatcher.Dispatch(ctx, event, record, handlers); err != nil {
+	if err = b.dispatcher.Dispatch(ctx, event, record, handlers); err != nil {
 		if log := b.log(ctx); log != nil {
 			log.ErrorContext(ctx, "record dispatch failed", "event_type", event.Type(), "err", err)
 		}

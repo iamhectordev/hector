@@ -9,6 +9,7 @@ import (
 	slackgo "github.com/slack-go/slack"
 
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Replier can post messages to Slack channels.
@@ -29,7 +30,10 @@ func NewReplyHandler(fn func() Replier) *ReplyHandler {
 
 func (h *ReplyHandler) Scheme() string { return "slack" }
 
-func (h *ReplyHandler) Reply(ctx context.Context, uri *url.URL, text string) error {
+func (h *ReplyHandler) Reply(ctx context.Context, uri *url.URL, text string) (err error) {
+	ctx, span := telem.Trace(ctx, spanReplySend, replyFields(uri)...)
+	defer span.End(&err)
+
 	channelID, threadTS, err := ParseOriginURI(uri)
 	if err != nil {
 		return err

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/iamhectordev/hector/pkg/llm/schema"
+	"github.com/iamhectordev/hector/pkg/telem"
 	sdkopenai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/openai/openai-go/v3/packages/param"
@@ -43,6 +44,13 @@ func New(apiKey, model string, opts ...Option) *Completer {
 	}
 	c.inner = sdkopenai.NewClient(options...)
 	return c
+}
+
+func (c *Completer) TelemetryFields() []telem.Field {
+	return []telem.Field{
+		telem.String("llm.provider", "openai"),
+		telem.String("llm.model", c.model),
+	}
 }
 
 func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) (*schema.Message, error) {

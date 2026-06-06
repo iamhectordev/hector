@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Completer returns the last user message as an assistant reply.
@@ -14,6 +15,13 @@ import (
 // subsequent tool result.
 // Used in tests and dev mode (no API key required).
 type Completer struct{}
+
+func (Completer) TelemetryFields() []telem.Field {
+	return []telem.Field{
+		telem.String("llm.provider", "echo"),
+		telem.String("llm.model", "echo"),
+	}
+}
 
 func (Completer) Complete(_ context.Context, req schema.CompletionRequest) (*schema.Message, error) {
 	stop := func(content string) *schema.Message {

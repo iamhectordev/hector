@@ -9,6 +9,7 @@ import (
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Runner executes one agent turn and returns the assistant reply.
@@ -55,11 +56,13 @@ func NewLoop(c llm.Completer, opts ...LoopOption) *Loop {
 	return l
 }
 
-func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) (*schema.Message, error) {
+func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) (reply *schema.Message, err error) {
 	if agentCtx == nil {
 		return nil, fmt.Errorf("agent: context is required")
 	}
 	ctx = l.withSession(ctx, agentCtx)
+	ctx, span := telem.Trace(ctx, spanTurnRun, turnFields(messages, l.tools)...)
+	defer span.End(&err)
 
 	history := l.history(ctx, agentCtx)
 	if len(history) > 0 {
@@ -75,13 +78,19 @@ func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, message
 			req.Tools = l.tools.Definitions()
 		}
 
-		reply, err := l.completer.Complete(ctx, req)
+		completeCtx, completeSpan := telem.Trace(ctx, llm.SpanComplete, llm.CompleteFields(l.completer, req)...)
+		reply, err := l.completer.Complete(completeCtx, req)
 		if err != nil {
+			completeSpan.End(&err)
 			return nil, err
 		}
 		if reply == nil {
-			return nil, fmt.Errorf("llm: nil reply")
+			err = fmt.Errorf("llm: nil reply")
+			completeSpan.End(&err)
+			return nil, err
 		}
+		telem.Event(completeCtx, "llm.completed", telem.String("llm.finish_reason", string(reply.FinishReason)))
+		completeSpan.End(&err)
 		exchange := append([]*schema.Message{}, messages[newMessagesStart:]...)
 		exchange = append(exchange, reply)
 		l.record(ctx, agentCtx, exchange)
@@ -97,7 +106,9 @@ func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, message
 				if l.tools == nil {
 					return nil, fmt.Errorf("agent: tool call %q requested without tools configured", call.Name)
 				}
-				output, execErr := l.tools.Run(ctx, call.Name, call.Arguments)
+				toolCtx, toolSpan := telem.Trace(ctx, spanToolCall, toolCallFields(call)...)
+				output, execErr := l.tools.Run(toolCtx, call.Name, call.Arguments)
+				toolSpan.End(&execErr)
 				if execErr != nil {
 					l.log.DebugContext(ctx, "tool error", "tool", call.Name, "error", execErr)
 					output = fmt.Sprintf("error: %s", execErr)
@@ -125,6 +136,7 @@ func (l *Loop) withSession(ctx context.Context, agentCtx Context) context.Contex
 	if s.ID == "" && s.SourceURI == "" {
 		return ctx
 	}
+	ctx = telem.WithBaggage(ctx, sessionFields(s)...)
 	return session.With(ctx, s)
 }
 

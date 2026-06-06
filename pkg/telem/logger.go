@@ -31,6 +31,11 @@ type ContextLogger struct {
 	logger *slog.Logger
 }
 
+// With returns a logger with additional fields.
+func (l ContextLogger) With(fields ...Field) ContextLogger {
+	return ContextLogger{logger: l.logger.With(slogArgs(fields)...)}
+}
+
 // InfoContext logs at info level.
 func (l ContextLogger) InfoContext(ctx context.Context, msg string, fields ...Field) {
 	l.logger.LogAttrs(ctx, slog.LevelInfo, msg, slogAttrs(fields)...)

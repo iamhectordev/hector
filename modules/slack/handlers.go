@@ -11,6 +11,7 @@ import (
 
 	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
@@ -75,6 +76,10 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 		m.log(ctx).DebugContext(ctx, "slack message ignored: bot self-message", "user", e.User)
 		return nil
 	}
+	ctx, span := telem.Trace(ctx, spanMessageReceive, messageFields(e)...)
+	var err error
+	defer span.End(&err)
+
 	data, ok, err := islack.ParseReceivedEvent(time.Now().UTC(), e)
 	if err != nil {
 		return err
@@ -88,8 +93,9 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	data.Channel.Type = channelTypeFromSlack(e.ChannelType)
 
 	ctx = session.With(ctx, session.Session{SourceURI: islack.NewOriginURI(data.Channel.ID, data.ThreadTS)})
+	ctx = telem.WithBaggage(ctx, receivedBaggage(data)...)
 	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
-	if err := m.bus.Record(ctx, islack.MessageReceived.New(data)); err != nil {
+	if err = m.bus.Record(ctx, islack.MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)
 	}
 	return nil

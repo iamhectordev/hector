@@ -12,6 +12,8 @@ import (
 	"github.com/sourcegraph/conc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 const (
@@ -344,6 +346,9 @@ func (d *reactionDispatcher) callHandler(job reactionJob) (err error) {
 		}
 	}()
 	ctx := otel.GetTextMapPropagator().Extract(job.ctx, propagation.MapCarrier(job.record.Headers))
+	fields := append(reactionFields(job.reaction), handlerFields(job.handler)...)
+	ctx, span := telem.Trace(ctx, spanReactionRun, fields...)
+	defer span.End(&err)
 	return job.handler.handle(ctx, job.event)
 }
 

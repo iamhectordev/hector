@@ -52,13 +52,20 @@ func TestLoggerAddsTraceIDsBaggageAndFields(t *testing.T) {
 	ctx, span := telem.Trace(ctx, "slack.message.receive")
 	defer span.End(nil)
 
-	telem.Logger(ctx).InfoContext(ctx, "message received", telem.String("surface.name", "slack"))
+	telem.Logger(ctx).
+		With(telem.String("component", "test")).
+		InfoContext(ctx, "message received",
+			telem.String("surface.name", "slack"),
+			telem.Any("err", errors.New("example")),
+		)
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(buf.Bytes(), &got))
 	require.Equal(t, "message received", got["msg"])
+	require.Equal(t, "test", got["component"])
 	require.Equal(t, "sess_123", got["session.id"])
 	require.Equal(t, "slack", got["surface.name"])
+	require.Equal(t, "example", got["err"])
 	require.NotEmpty(t, got["trace_id"])
 	require.NotEmpty(t, got["span_id"])
 }

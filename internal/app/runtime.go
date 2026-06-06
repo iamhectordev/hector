@@ -24,6 +24,7 @@ import (
 	"github.com/iamhectordev/hector/pkg/safehttp"
 	sessionsqlite "github.com/iamhectordev/hector/pkg/session/sqlite"
 	"github.com/iamhectordev/hector/pkg/supervisor"
+	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	wafflesqlite "github.com/iamhectordev/hector/pkg/waffle/sqlite"
 )
@@ -61,6 +62,7 @@ func NewRuntime(cfg Config, opts ...Option) (*Runtime, error) {
 
 // Start initializes the application, runs it until shutdown, and closes owned resources.
 func (r *Runtime) Start(ctx context.Context) error {
+	ctx = telem.WithLogger(ctx, r.logger)
 	r.logger.InfoContext(ctx, "starting app runtime")
 	defer r.close(ctx)
 
