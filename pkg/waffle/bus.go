@@ -87,23 +87,17 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) (err error) {
 	defer b.stateMu.RUnlock()
 
 	if b.closed {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "record rejected on closed bus", "event_type", event.Type(), "err", ErrClosed)
-		}
+		b.log(ctx).ErrorContext(ctx, "record rejected on closed bus", telem.String("event_type", event.Type()), telem.Any("err", ErrClosed))
 		return ErrClosed
 	}
 	if !b.started {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "record rejected on stopped bus", "event_type", event.Type(), "err", ErrNotStarted)
-		}
+		b.log(ctx).ErrorContext(ctx, "record rejected on stopped bus", telem.String("event_type", event.Type()), telem.Any("err", ErrNotStarted))
 		return ErrNotStarted
 	}
 
 	record, err := eventRecord(ctx, event)
 	if err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "record encoding failed", "event_type", event.Type(), "err", err)
-		}
+		b.log(ctx).ErrorContext(ctx, "record encoding failed", telem.String("event_type", event.Type()), telem.Any("err", err))
 		return err
 	}
 
@@ -113,9 +107,7 @@ func (b *EventBus) Record(ctx context.Context, event AnyEvent) (err error) {
 	telem.Event(ctx, "waffle.handlers.selected", telem.Int("waffle.handler.count", len(handlers)))
 
 	if err = b.dispatcher.Dispatch(ctx, event, record, handlers); err != nil {
-		if log := b.log(ctx); log != nil {
-			log.ErrorContext(ctx, "record dispatch failed", "event_type", event.Type(), "err", err)
-		}
+		b.log(ctx).ErrorContext(ctx, "record dispatch failed", telem.String("event_type", event.Type()), telem.Any("err", err))
 		return err
 	}
 	return nil
@@ -179,9 +171,7 @@ func (b *EventBus) Shutdown(ctx context.Context) error {
 	wasStarted := b.started
 	if !b.closed {
 		b.closed = true
-		if log := b.log(ctx); log != nil {
-			log.InfoContext(ctx, "event bus shutting down")
-		}
+		b.log(ctx).InfoContext(ctx, "event bus shutting down")
 	}
 	b.stateMu.Unlock()
 
@@ -215,6 +205,6 @@ func (b *EventBus) handler(eventType, name string) (registeredHandler, bool) {
 	return registeredHandler{}, false
 }
 
-func (b *EventBus) log(context.Context) *slog.Logger {
-	return b.logger
+func (b *EventBus) log(ctx context.Context) telem.ContextLogger {
+	return telem.WrapLogger(ctx, b.logger)
 }

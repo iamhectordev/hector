@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"time"
+
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Supervisor runs one or more [Module] values until a terminal event.
@@ -77,14 +78,12 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 	}
 
 	first := s.waitFirstTerminal(ctx, s.signalPipe(), events)
-	if log := s.log(ctx); log != nil {
-		log.InfoContext(ctx, "shutdown",
-			slog.Any("reason", first.reason),
-			slog.String("trigger_module", first.name),
-			slog.Any("err", first.err),
-			slog.Any("signal", first.sig),
-		)
-	}
+	s.log(ctx).InfoContext(ctx, "shutdown",
+		telem.Any("reason", first.reason),
+		telem.String("trigger_module", first.name),
+		telem.Any("err", first.err),
+		telem.Any("signal", first.sig),
+	)
 
 	cancelRun()
 	t0 := time.Now()
@@ -94,16 +93,14 @@ func (s *Supervisor) Run(ctx context.Context) Report {
 	dur := time.Since(t0)
 
 	rep := buildReport(first, preStopErrs, stopErrs, postStopErrs, dur)
-	if log := s.log(ctx); log != nil {
-		if len(rep.PreStopErrors) > 0 || len(rep.StopErrors) > 0 || len(rep.PostStopErrors) > 0 {
-			log.ErrorContext(ctx, "stop completed with errors",
-				slog.Any("pre_stop_errors", rep.PreStopErrors),
-				slog.Any("stop_errors", rep.StopErrors),
-				slog.Any("post_stop_errors", rep.PostStopErrors))
-		} else {
-			log.InfoContext(ctx, "stop completed",
-				slog.Duration("shutdown_duration", rep.ShutdownDuration))
-		}
+	if len(rep.PreStopErrors) > 0 || len(rep.StopErrors) > 0 || len(rep.PostStopErrors) > 0 {
+		s.log(ctx).ErrorContext(ctx, "stop completed with errors",
+			telem.Any("pre_stop_errors", rep.PreStopErrors),
+			telem.Any("stop_errors", rep.StopErrors),
+			telem.Any("post_stop_errors", rep.PostStopErrors))
+	} else {
+		s.log(ctx).InfoContext(ctx, "stop completed",
+			telem.Duration("shutdown_duration", rep.ShutdownDuration))
 	}
 	return rep
 }
@@ -267,6 +264,6 @@ func (s *Supervisor) signalPipe() <-chan os.Signal {
 	return nil
 }
 
-func (s *Supervisor) log(context.Context) *slog.Logger {
-	return s.cfg.logger
+func (s *Supervisor) log(ctx context.Context) telem.ContextLogger {
+	return telem.WrapLogger(ctx, s.cfg.logger)
 }

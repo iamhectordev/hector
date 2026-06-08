@@ -85,9 +85,7 @@ func (d *reactionDispatcher) Start(ctx context.Context) error {
 	go d.poll(runCtx)
 	d.started = true
 
-	if log := d.log(ctx); log != nil {
-		log.InfoContext(ctx, "persistent reactions started", "workers", d.workers)
-	}
+	d.log(ctx).InfoContext(ctx, "persistent reactions started", telem.Int("workers", d.workers))
 	return nil
 }
 
@@ -115,9 +113,7 @@ func (d *reactionDispatcher) Dispatch(ctx context.Context, event AnyEvent, recor
 func (d *reactionDispatcher) Drain(ctx context.Context) error {
 	d.drainPending(ctx)
 	if err := waitContext(ctx, d.pending.Wait); err != nil {
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "drain canceled", "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "drain canceled", telem.Any("err", err))
 		return err
 	}
 	return nil
@@ -132,9 +128,7 @@ func (d *reactionDispatcher) Shutdown(ctx context.Context) error {
 	d.mu.Unlock()
 
 	if err := waitContext(ctx, d.pollerWG.Wait); err != nil {
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "reaction poller shutdown canceled", "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "reaction poller shutdown canceled", telem.Any("err", err))
 		return err
 	}
 
@@ -146,9 +140,7 @@ func (d *reactionDispatcher) Shutdown(ctx context.Context) error {
 	d.mu.Unlock()
 
 	if err := waitContext(ctx, d.workerWG.Wait); err != nil {
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "reaction worker shutdown canceled", "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "reaction worker shutdown canceled", telem.Any("err", err))
 		return err
 	}
 	return nil
@@ -193,8 +185,8 @@ func (d *reactionDispatcher) drainPending(ctx context.Context) {
 	for {
 		reactions, err := d.store.ListPendingReactions(ctx, d.pollLimit)
 		if err != nil {
-			if log := d.log(ctx); log != nil && !errors.Is(ctx.Err(), context.Canceled) {
-				log.ErrorContext(ctx, "list pending reactions failed", "err", err)
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				d.log(ctx).ErrorContext(ctx, "list pending reactions failed", telem.Any("err", err))
 			}
 			return
 		}
@@ -230,9 +222,7 @@ func (d *reactionDispatcher) enqueue(ctx context.Context, reaction ReactionRecor
 		if errors.Is(err, ErrEventNotFound) {
 			_ = d.store.MarkReactionFailed(ctx, reaction.ID)
 		}
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "load reaction event failed", "reaction_id", reaction.ID, "event_id", reaction.EventID, "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "load reaction event failed", telem.String("reaction_id", reaction.ID), telem.String("event_id", reaction.EventID), telem.Any("err", err))
 		return false
 	}
 
@@ -246,9 +236,7 @@ func (d *reactionDispatcher) enqueue(ctx context.Context, reaction ReactionRecor
 	if err != nil {
 		d.pending.Done()
 		d.clearInFlight(reaction.ID)
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "claim reaction failed", "reaction_id", reaction.ID, "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "claim reaction failed", telem.String("reaction_id", reaction.ID), telem.Any("err", err))
 		return false
 	}
 	if !claimed {
@@ -262,9 +250,7 @@ func (d *reactionDispatcher) enqueue(ctx context.Context, reaction ReactionRecor
 		d.pending.Done()
 		d.clearInFlight(reaction.ID)
 		_ = d.store.MarkReactionFailed(ctx, reaction.ID)
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "decode reaction event failed", "reaction_id", reaction.ID, "event_id", reaction.EventID, "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "decode reaction event failed", telem.String("reaction_id", reaction.ID), telem.String("event_id", reaction.EventID), telem.Any("err", err))
 		return false
 	}
 
@@ -313,19 +299,15 @@ func (d *reactionDispatcher) run(job reactionJob) {
 
 	if err := d.callHandler(job); err != nil {
 		if markErr := d.store.MarkReactionFailed(job.ctx, job.reaction.ID); markErr != nil {
-			if log := d.log(job.ctx); log != nil {
-				log.ErrorContext(job.ctx, "mark reaction failed failed", "reaction_id", job.reaction.ID, "err", markErr)
-			}
+			d.log(job.ctx).ErrorContext(job.ctx, "mark reaction failed failed", telem.String("reaction_id", job.reaction.ID), telem.Any("err", markErr))
 		}
-		if log := d.log(job.ctx); log != nil {
-			log.ErrorContext(job.ctx, "handler failed",
-				"handler", job.handler.name,
-				"event_type", job.event.Type(),
-				"event_id", job.event.ID(),
-				"reaction_id", job.reaction.ID,
-				"err", err,
-			)
-		}
+		d.log(job.ctx).ErrorContext(job.ctx, "handler failed",
+			telem.String("handler", job.handler.name),
+			telem.String("event_type", job.event.Type()),
+			telem.String("event_id", job.event.ID()),
+			telem.String("reaction_id", job.reaction.ID),
+			telem.Any("err", err),
+		)
 		if d.errorHook != nil {
 			d.errorHook(job.ctx, job.event, job.handler.name, err)
 		}
@@ -333,9 +315,7 @@ func (d *reactionDispatcher) run(job reactionJob) {
 	}
 
 	if err := d.store.MarkReactionSucceeded(job.ctx, job.reaction.ID); err != nil {
-		if log := d.log(job.ctx); log != nil {
-			log.ErrorContext(job.ctx, "mark reaction succeeded failed", "reaction_id", job.reaction.ID, "err", err)
-		}
+		d.log(job.ctx).ErrorContext(job.ctx, "mark reaction succeeded failed", telem.String("reaction_id", job.reaction.ID), telem.Any("err", err))
 	}
 }
 
@@ -352,8 +332,8 @@ func (d *reactionDispatcher) callHandler(job reactionJob) (err error) {
 	return job.handler.handle(ctx, job.event)
 }
 
-func (d *reactionDispatcher) log(context.Context) *slog.Logger {
-	return d.logger
+func (d *reactionDispatcher) log(ctx context.Context) telem.ContextLogger {
+	return telem.WrapLogger(ctx, d.logger)
 }
 
 type reactionJob struct {

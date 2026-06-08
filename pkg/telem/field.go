@@ -3,6 +3,7 @@ package telem
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -22,6 +23,11 @@ func String(key, value string) Field {
 // Int returns an integer field.
 func Int(key string, value int) Field {
 	return Field{key: key, value: value, attr: attribute.Int(key, value)}
+}
+
+// Duration returns a duration field.
+func Duration(key string, value time.Duration) Field {
+	return Field{key: key, value: value, attr: attribute.String(key, value.String())}
 }
 
 // Bool returns a boolean field.

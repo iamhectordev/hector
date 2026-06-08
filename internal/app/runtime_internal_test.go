@@ -35,7 +35,7 @@ func TestRuntimeSupervisorOwnsTracingShutdownOnNormalStop(t *testing.T) {
 		tracing: tracingRuntime,
 		bus:     bus,
 	}
-	require.NoError(t, runtime.initSupervisor([]supervisor.Module{
+	require.NoError(t, runtime.initSupervisor(t.Context(), []supervisor.Module{
 		blockingModule{started: started},
 	}))
 

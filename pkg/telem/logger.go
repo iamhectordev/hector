@@ -26,6 +26,14 @@ func Logger(ctx context.Context) ContextLogger {
 	return ContextLogger{logger: logger.With(contextAttrs(ctx)...)}
 }
 
+// WrapLogger returns a ContextLogger backed by logger, enriched with trace/baggage from ctx.
+func WrapLogger(ctx context.Context, logger *slog.Logger) ContextLogger {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return ContextLogger{logger: logger.With(contextAttrs(ctx)...)}
+}
+
 // ContextLogger wraps slog with telem fields.
 type ContextLogger struct {
 	logger *slog.Logger

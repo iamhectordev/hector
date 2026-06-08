@@ -9,6 +9,8 @@ import (
 	"github.com/sourcegraph/conc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+
+	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 type dispatcher interface {
@@ -54,9 +56,7 @@ func (d *memoryDispatcher) Start(ctx context.Context) error {
 	}
 	d.started = true
 
-	if log := d.log(ctx); log != nil {
-		log.InfoContext(ctx, "event bus started", "workers", d.workers)
-	}
+	d.log(ctx).InfoContext(ctx, "event bus started", telem.Int("workers", d.workers))
 	return nil
 }
 
@@ -72,9 +72,7 @@ func (d *memoryDispatcher) Dispatch(ctx context.Context, event AnyEvent, record 
 		case d.jobs <- job{ctx: ctx, event: event, record: record, handler: handler}:
 		case <-ctx.Done():
 			d.pending.Done()
-			if log := d.log(ctx); log != nil {
-				log.ErrorContext(ctx, "record canceled while queueing handler", "event_type", event.Type(), "err", ctx.Err())
-			}
+		d.log(ctx).ErrorContext(ctx, "record canceled while queueing handler", telem.String("event_type", event.Type()), telem.Any("err", ctx.Err()))
 			return ctx.Err()
 		}
 	}
@@ -84,9 +82,7 @@ func (d *memoryDispatcher) Dispatch(ctx context.Context, event AnyEvent, record 
 
 func (d *memoryDispatcher) Drain(ctx context.Context) error {
 	if err := waitContext(ctx, d.pending.Wait); err != nil {
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "drain canceled", "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "drain canceled", telem.Any("err", err))
 		return err
 	}
 	return nil
@@ -101,9 +97,7 @@ func (d *memoryDispatcher) Shutdown(ctx context.Context) error {
 	d.mu.Unlock()
 
 	if err := waitContext(ctx, d.workerWG.Wait); err != nil {
-		if log := d.log(ctx); log != nil {
-			log.ErrorContext(ctx, "shutdown canceled", "err", err)
-		}
+		d.log(ctx).ErrorContext(ctx, "shutdown canceled", telem.Any("err", err))
 		return err
 	}
 	return nil
@@ -119,14 +113,12 @@ func (d *memoryDispatcher) run(job job) {
 	defer d.pending.Done()
 
 	if err := d.callHandler(job); err != nil {
-		if log := d.log(job.ctx); log != nil {
-			log.ErrorContext(job.ctx, "handler failed",
-				"handler", job.handler.name,
-				"event_type", job.event.Type(),
-				"event_id", job.event.ID(),
-				"err", err,
-			)
-		}
+		d.log(job.ctx).ErrorContext(job.ctx, "handler failed",
+			telem.String("handler", job.handler.name),
+			telem.String("event_type", job.event.Type()),
+			telem.String("event_id", job.event.ID()),
+			telem.Any("err", err),
+		)
 		if d.errorHook != nil {
 			d.errorHook(job.ctx, job.event, job.handler.name, err)
 		}
@@ -143,8 +135,8 @@ func (d *memoryDispatcher) callHandler(job job) (err error) {
 	return job.handler.handle(ctx, job.event)
 }
 
-func (d *memoryDispatcher) log(context.Context) *slog.Logger {
-	return d.logger
+func (d *memoryDispatcher) log(ctx context.Context) telem.ContextLogger {
+	return telem.WrapLogger(ctx, d.logger)
 }
 
 type job struct {

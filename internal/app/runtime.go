@@ -63,7 +63,7 @@ func NewRuntime(cfg Config, opts ...Option) (*Runtime, error) {
 // Start initializes the application, runs it until shutdown, and closes owned resources.
 func (r *Runtime) Start(ctx context.Context) error {
 	ctx = telem.WithLogger(ctx, r.logger)
-	r.logger.InfoContext(ctx, "starting app runtime")
+	telem.Logger(ctx).InfoContext(ctx, "starting app runtime")
 	defer r.close(ctx)
 
 	if err := r.initTracing(ctx); err != nil {
@@ -74,10 +74,10 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 
 	rep := r.sv.Run(ctx)
-	r.logger.InfoContext(ctx, "app runtime finished",
-		"reason", rep.Reason,
-		"trigger_module", rep.TriggerModule,
-		"signal", rep.Signal,
+	telem.Logger(ctx).InfoContext(ctx, "app runtime finished",
+		telem.Any("reason", rep.Reason),
+		telem.String("trigger_module", rep.TriggerModule),
+		telem.Any("signal", rep.Signal),
 	)
 	return rep.Err()
 }
@@ -95,7 +95,7 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err := r.initDatabase(ctx); err != nil {
 		return err
 	}
-	if err := r.initBus(); err != nil {
+	if err := r.initBus(ctx); err != nil {
 		return err
 	}
 
@@ -123,25 +123,25 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return r.initSupervisor(modules)
+	return r.initSupervisor(ctx, modules)
 }
 
 func (r *Runtime) initDatabase(ctx context.Context) error {
 	db, err := dbsqlite.Open(ctx, r.cfg.DB)
 	if err != nil {
-		r.logger.ErrorContext(ctx, "failed to open sqlite database", "err", err)
+		telem.Logger(ctx).ErrorContext(ctx, "failed to open sqlite database", telem.Any("err", err))
 		return err
 	}
 	r.db = db
 
 	if err := dbsqlite.Migrate(ctx, db, wafflesqlite.Migrations(), sessionsqlite.Migrations(), memorysqlite.Migrations()); err != nil {
-		r.logger.ErrorContext(ctx, "failed to migrate sqlite database", "err", err)
+		telem.Logger(ctx).ErrorContext(ctx, "failed to migrate sqlite database", telem.Any("err", err))
 		return fmt.Errorf("sqlite migrations: %w", err)
 	}
 	return nil
 }
 
-func (r *Runtime) initBus() error {
+func (r *Runtime) initBus(ctx context.Context) error {
 	bus, err := waffle.NewEventBus(
 		waffle.WithWorkers(2),
 		waffle.WithLogger(r.logger),
@@ -149,7 +149,7 @@ func (r *Runtime) initBus() error {
 		waffle.WithPersistentReactions(),
 	)
 	if err != nil {
-		r.logger.Error("failed to create event bus", "err", err)
+		telem.Logger(ctx).ErrorContext(ctx, "failed to create event bus", telem.Any("err", err))
 		return err
 	}
 	r.bus = bus
@@ -236,7 +236,7 @@ func (r *Runtime) initModules(
 	return modules, nil
 }
 
-func (r *Runtime) initSupervisor(modules []supervisor.Module) error {
+func (r *Runtime) initSupervisor(ctx context.Context, modules []supervisor.Module) error {
 	opts := []supervisor.Option{
 		supervisor.WithLogger(r.logger),
 		supervisor.WithPostInitHook("bus.start", r.bus.Start),
@@ -254,7 +254,7 @@ func (r *Runtime) initSupervisor(modules []supervisor.Module) error {
 	}
 	sv, err := supervisor.New(modules, opts...)
 	if err != nil {
-		r.logger.Error("failed to create supervisor", "err", err)
+		telem.Logger(ctx).ErrorContext(ctx, "failed to create supervisor", telem.Any("err", err))
 		return err
 	}
 	r.sv = sv
@@ -264,17 +264,17 @@ func (r *Runtime) initSupervisor(modules []supervisor.Module) error {
 func (r *Runtime) close(ctx context.Context) {
 	if r.githubCloser != nil {
 		if err := r.githubCloser.Close(); err != nil {
-			r.logger.ErrorContext(ctx, "failed to close github mcp client", "err", err)
+			telem.Logger(ctx).ErrorContext(ctx, "failed to close github mcp client", telem.Any("err", err))
 		}
 	}
 	if r.db != nil {
 		if err := r.db.Close(); err != nil {
-			r.logger.ErrorContext(ctx, "failed to close sqlite database", "err", err)
+			telem.Logger(ctx).ErrorContext(ctx, "failed to close sqlite database", telem.Any("err", err))
 		}
 	}
 	if r.tracing != nil {
 		if err := r.tracing.Shutdown(ctx); err != nil {
-			r.logger.ErrorContext(ctx, "failed to shut down tracing", "err", err)
+			telem.Logger(ctx).ErrorContext(ctx, "failed to shut down tracing", telem.Any("err", err))
 		}
 	}
 }
