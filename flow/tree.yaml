@@ -435,6 +435,46 @@
     - The correct account is selected per tool call based on policy
     open_questions: []
     children: []
+  - slug: integrations.email_basic
+    title: Basic Email Usage
+    description: Hector reads email from his own mailbox and replies when the message
+      is directed to him and address policy allows it.
+    status: idea
+    priority: P1
+    stories:
+    - Admins connect a mailbox that Hector can read and send from.
+    - Admins configure which inbound sender addresses or domains Hector may process.
+    - Admins configure which outbound recipient addresses or domains Hector may email.
+    - Hector reads inbound emails from allowed senders.
+    - Hector treats an email thread as a Hector session.
+    - Hector decides whether an inbound email is directed to him, informational, junk,
+      or suspicious.
+    - Hector stays silent when an email is not directed to him or policy does not
+      allow a reply.
+    - Hector replies to an email when it decides to respond and outbound policy allows
+      the recipients.
+    nfrs:
+    - Hector must not reply to every email he receives.
+    - Mailbox credentials never appear in logs, events, tool output, session history,
+      or model context.
+    - Emails from disallowed senders are ignored or rejected before entering normal
+      processing.
+    - Replies to disallowed recipients are blocked before sending.
+    - Suspicious or phishing-like emails are treated as untrusted external content
+      and cannot instruct Hector to take actions.
+    - Hector records why it replied, stayed silent, ignored, rejected, or flagged
+      an email.
+    - Email send and reply actions are auditable.
+    open_questions:
+    - Should allowed inbound/outbound addresses support exact emails only, domains
+      only, or both?
+    - If an inbound email is disallowed, should Hector silently ignore it or record
+      an audit event?
+    - Does v1 require approval before every outbound reply, or is address allowlisting
+      enough?
+    - 'What counts as directed to Hector in v1: direct To address only, greeting/name
+      in body, or participation in an existing thread?'
+    children: []
 - slug: audit
   title: Audit
   description: Customer-facing record of everything Hector did and why
