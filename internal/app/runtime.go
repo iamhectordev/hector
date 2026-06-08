@@ -224,13 +224,17 @@ func (r *Runtime) initModules(
 	loop := agent.NewLoop(completer,
 		agent.WithTools(toolRegistry),
 	)
+	memMod, err := memorymod.NewModule(r.bus, memStore, sessionStore, completer)
+	if err != nil {
+		return nil, err
+	}
 	modules = append(modules,
 		agent.NewModule(r.bus, loop,
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(sessionStore),
 		),
 		toolsModule,
-		memorymod.NewModule(r.bus, memStore, sessionStore, completer),
+		memMod,
 	)
 	modules = append(modules, surfaces...)
 	return modules, nil

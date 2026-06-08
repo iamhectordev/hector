@@ -11,6 +11,7 @@ import (
 
 	"github.com/doron-cohen/klee/xdg"
 	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite/vec"
 )
 
 const (

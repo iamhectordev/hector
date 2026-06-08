@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/iamhectordev/hector/internal/ulid"
@@ -42,17 +43,17 @@ type Module struct {
 }
 
 // NewModule creates a Module. completer is used to extract facts from each turn.
-func NewModule(bus *waffle.EventBus, store memoryStore, sessions sessionStore, completer llm.Completer) *Module {
+func NewModule(bus *waffle.EventBus, store memoryStore, sessions sessionStore, completer llm.Completer) (*Module, error) {
 	extractor, err := structured.NewExtractor[extractionResult](completer, extractionSystem)
 	if err != nil {
-		panic("memory: failed to build extractor: " + err.Error())
+		return nil, fmt.Errorf("memory: build extractor: %w", err)
 	}
 	return &Module{
 		bus:       bus,
 		store:     store,
 		sessions:  sessions,
 		extractor: extractor,
-	}
+	}, nil
 }
 
 func (m *Module) Name() string { return "memory" }

@@ -34,5 +34,14 @@ func Migrations() migrations.MigrationSet {
 			SQL: `ALTER TABLE memory_objects ADD COLUMN session_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE memory_objects ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`,
 		},
+		migrations.Migration{
+			Version: 5,
+			Name:    "vec0_embeddings",
+			SQL: `DROP TABLE IF EXISTS memory_objects_vec;
+CREATE VIRTUAL TABLE memory_objects_vec USING vec0(
+  id TEXT PRIMARY KEY,
+  embedding FLOAT[1536]
+)`,
+		},
 	)
 }

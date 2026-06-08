@@ -6,7 +6,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -14,23 +16,29 @@ import (
 	"github.com/iamhectordev/hector/pkg/memory"
 )
 
-// embedder is the subset of embed.Embedder used by the store.
+const (
+	rrfK          = 60
+	embedTimeout  = 1 * time.Second
+	overfetchMult = 2
+)
+
+// Embedder converts text to a vector representation.
 // Defined locally to avoid an import cycle between pkg/memory/sqlite and internal/embed.
-type embedder interface {
+type Embedder interface {
 	Embed(ctx context.Context, text string) ([]float32, error)
 }
 
-// Store persists memory objects in SQLite with FTS5 search. The caller owns db.
+// Store persists memory objects in SQLite with FTS5 and vector search. The caller owns db.
 type Store struct {
 	db       *sql.DB
-	embedder embedder
+	embedder Embedder
 }
 
 // StoreOption configures a Store.
 type StoreOption func(*Store)
 
-// WithEmbedder sets an embedder; when set, Put stores a vector alongside each object.
-func WithEmbedder(e embedder) StoreOption {
+// WithEmbedder sets an embedder; when set, Put stores a vector and Search runs hybrid retrieval.
+func WithEmbedder(e Embedder) StoreOption {
 	return func(s *Store) { s.embedder = e }
 }
 
@@ -43,10 +51,9 @@ func NewStore(db *sql.DB, opts ...StoreOption) *Store {
 	return s
 }
 
-// Put inserts or replaces an object and keeps the FTS index in sync.
-// If an embedder is configured, it also stores the embedding vector.
+// Put inserts or replaces an object and keeps the FTS and vector indexes in sync.
 func (s *Store) Put(ctx context.Context, obj memory.Object) error {
-	vec, err := s.embed(ctx, obj.Content)
+	vec, err := s.embedWithTimeout(ctx, obj.Content)
 	if err != nil {
 		return err
 	}
@@ -82,7 +89,7 @@ func (s *Store) Put(ctx context.Context, obj memory.Object) error {
 
 	if vec != nil {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT OR REPLACE INTO memory_objects_vec (id, vec) VALUES (?, ?)`,
+			`INSERT OR REPLACE INTO memory_objects_vec (id, embedding) VALUES (?, ?)`,
 			obj.ID, float32sToBlob(vec),
 		); err != nil {
 			return fmt.Errorf("memory/sqlite: put vec: %w", err)
@@ -95,58 +102,175 @@ func (s *Store) Put(ctx context.Context, obj memory.Object) error {
 	return nil
 }
 
-// Search returns objects whose content matches query, ordered by FTS rank.
+// Search returns objects matching query. When an embedder is configured it runs FTS and
+// vector search sequentially then merges results with reciprocal rank fusion.
 func (s *Store) Search(ctx context.Context, query string, limit int) ([]memory.Object, error) {
+	fetch := limit * overfetchMult
+
+	ftsIDs, err := s.ftsSearch(ctx, query, fetch)
+	if err != nil {
+		return nil, err
+	}
+
+	var vecIDs []rankedID
+	if s.embedder != nil {
+		vec, embedErr := s.embedWithTimeout(ctx, query)
+		if embedErr != nil {
+			slog.WarnContext(ctx, "memory/sqlite: embed query failed, falling back to FTS", "err", embedErr)
+		} else if vec != nil {
+			vecIDs, err = s.vecSearch(ctx, vec, fetch)
+			if err != nil {
+				slog.WarnContext(ctx, "memory/sqlite: vec search failed, falling back to FTS", "err", err)
+				vecIDs = nil
+			}
+		}
+	}
+
+	ids := rrf(ftsIDs, vecIDs, limit)
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	objMap, err := s.fetchObjects(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]memory.Object, 0, len(ids))
+	for _, id := range ids {
+		if obj, ok := objMap[id]; ok {
+			out = append(out, obj)
+		}
+	}
+	return out, nil
+}
+
+type rankedID struct {
+	id   string
+	rank int // 0-based position in result list
+}
+
+func (s *Store) ftsSearch(ctx context.Context, query string, limit int) ([]rankedID, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT f.id, o.content, o.session_id, o.created_at
-		 FROM memory_objects_fts f
-		 JOIN memory_objects o ON o.id = f.id
-		 WHERE f.content MATCH ? ORDER BY rank LIMIT ?`,
+		`SELECT id FROM memory_objects_fts WHERE content MATCH ? ORDER BY rank LIMIT ?`,
 		sanitizeFTSQuery(query), limit,
 	)
 	if err != nil {
 		if isNoMatchError(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("memory/sqlite: search: %w", err)
+		return nil, fmt.Errorf("memory/sqlite: fts search: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []memory.Object
+	var out []rankedID
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("memory/sqlite: fts scan: %w", err)
+		}
+		out = append(out, rankedID{id: id, rank: len(out)})
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) vecSearch(ctx context.Context, queryVec []float32, limit int) ([]rankedID, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, distance FROM memory_objects_vec WHERE embedding MATCH ? AND k = ?`,
+		float32sToBlob(queryVec), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("memory/sqlite: vec search: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []rankedID
+	for rows.Next() {
+		var id string
+		var distance float64
+		if err := rows.Scan(&id, &distance); err != nil {
+			return nil, fmt.Errorf("memory/sqlite: vec scan: %w", err)
+		}
+		out = append(out, rankedID{id: id, rank: len(out)})
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) fetchObjects(ctx context.Context, ids []string) (map[string]memory.Object, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, content, session_id, created_at FROM memory_objects WHERE id IN (`+placeholders+`)`,
+		args...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("memory/sqlite: fetch objects: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string]memory.Object, len(ids))
 	for rows.Next() {
 		var obj memory.Object
 		var createdAt string
 		if err := rows.Scan(&obj.ID, &obj.Content, &obj.SessionID, &createdAt); err != nil {
-			return nil, fmt.Errorf("memory/sqlite: scan object: %w", err)
+			return nil, fmt.Errorf("memory/sqlite: fetch scan: %w", err)
 		}
 		if t, err := time.Parse(time.RFC3339, createdAt); err == nil {
 			obj.CreatedAt = t
 		}
-		out = append(out, obj)
+		out[obj.ID] = obj
 	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("memory/sqlite: search rows: %w", err)
-	}
-	return out, nil
+	return out, rows.Err()
 }
 
-func (s *Store) embed(ctx context.Context, content string) ([]float32, error) {
+func (s *Store) embedWithTimeout(ctx context.Context, content string) ([]float32, error) {
 	if s.embedder == nil {
 		return nil, nil
 	}
-	vec, err := s.embedder.Embed(ctx, content)
+	embedCtx, cancel := context.WithTimeout(ctx, embedTimeout)
+	defer cancel()
+
+	vec, err := s.embedder.Embed(embedCtx, content)
 	if err != nil {
 		return nil, fmt.Errorf("memory/sqlite: embed: %w", err)
 	}
 	return vec, nil
 }
 
-func float32sToBlob(vec []float32) []byte {
-	b := make([]byte, len(vec)*4)
-	for i, f := range vec {
-		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(f))
+// rrf merges two ranked lists using reciprocal rank fusion and returns the top limit IDs.
+func rrf(fts, vec []rankedID, limit int) []string {
+	scores := make(map[string]float64)
+	for _, r := range fts {
+		scores[r.id] += 1.0 / float64(rrfK+r.rank+1)
 	}
-	return b
+	for _, r := range vec {
+		scores[r.id] += 1.0 / float64(rrfK+r.rank+1)
+	}
+
+	ids := make([]string, 0, len(scores))
+	for id := range scores {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		if scores[ids[i]] != scores[ids[j]] {
+			return scores[ids[i]] > scores[ids[j]]
+		}
+		return ids[i] < ids[j]
+	})
+
+	if len(ids) > limit {
+		ids = ids[:limit]
+	}
+	return ids
 }
 
 // sanitizeFTSQuery converts a natural language string into an FTS5 OR query.
@@ -180,4 +304,12 @@ func isNoMatchError(err error) bool {
 		return false
 	}
 	return sqlErr.Error() == "no match"
+}
+
+func float32sToBlob(vec []float32) []byte {
+	b := make([]byte, len(vec)*4)
+	for i, f := range vec {
+		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(f))
+	}
+	return b
 }

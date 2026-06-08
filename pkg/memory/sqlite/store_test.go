@@ -2,11 +2,13 @@ package sqlite_test
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite/vec"
 
 	"github.com/iamhectordev/hector/pkg/memory"
 	"github.com/iamhectordev/hector/pkg/memory/sqlite"
@@ -119,7 +121,7 @@ func TestStore_Put_StoresVecWhenEmbedderConfigured(t *testing.T) {
 	require.NoError(t, store.Put(ctx, memory.Object{ID: "1", Content: "the auth service uses postgres"}))
 
 	var blob []byte
-	err := db.QueryRowContext(ctx, `SELECT vec FROM memory_objects_vec WHERE id = ?`, "1").Scan(&blob)
+	err := db.QueryRowContext(ctx, `SELECT embedding FROM memory_objects_vec WHERE id = ?`, "1").Scan(&blob)
 	require.NoError(t, err)
 	require.NotEmpty(t, blob)
 }
@@ -137,11 +139,16 @@ func TestStore_Put_SkipsVecWhenNoEmbedder(t *testing.T) {
 	require.Equal(t, 0, count)
 }
 
-// echoEmbedder is an in-test embedder that returns a fixed vector.
+// echoEmbedder returns a deterministic 1536-dimensional vector derived from the text's SHA256 hash.
 type echoEmbedder struct{}
 
-func (e *echoEmbedder) Embed(_ context.Context, _ string) ([]float32, error) {
-	return []float32{0.1, 0.2, 0.3}, nil
+func (e *echoEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	h := sha256.Sum256([]byte(text))
+	vec := make([]float32, 1536)
+	for i := range vec {
+		vec[i] = float32(h[i%32]) / 255.0
+	}
+	return vec, nil
 }
 
 func newStore(t *testing.T) *sqlite.Store {
@@ -149,6 +156,11 @@ func newStore(t *testing.T) *sqlite.Store {
 	db := openTestDB(t)
 	migrateDB(t, db)
 	return sqlite.NewStore(db)
+}
+
+func newStoreWithEmbedder(t *testing.T, db *sql.DB, e sqlite.Embedder) *sqlite.Store {
+	t.Helper()
+	return sqlite.NewStore(db, sqlite.WithEmbedder(e))
 }
 
 func migrateDB(t *testing.T, db *sql.DB) {

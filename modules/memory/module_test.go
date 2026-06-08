@@ -31,7 +31,8 @@ func TestMemoryModule_StoresExtractedObjectsOnTurnEnd(t *testing.T) {
 	)
 	store := &stubMemoryStore{}
 
-	mod := memory.NewModule(bus, store, sessions, extractor)
+	mod, err := memory.NewModule(bus, store, sessions, extractor)
+	require.NoError(t, err)
 	require.NoError(t, mod.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
@@ -70,7 +71,8 @@ func TestMemoryModule_SlicesTurnOffsetFromHistory(t *testing.T) {
 	}
 
 	store := &stubMemoryStore{}
-	mod := memory.NewModule(bus, store, sessions, extractor)
+	mod, err := memory.NewModule(bus, store, sessions, extractor)
+	require.NoError(t, err)
 	require.NoError(t, mod.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
@@ -93,7 +95,8 @@ func TestMemoryModule_ContinuesWhenExtractionFails(t *testing.T) {
 	extractor := llmtest.NewCompleter(t, llmtest.Error(llmtest.ErrLLMDown))
 	store := &stubMemoryStore{}
 
-	mod := memory.NewModule(bus, store, sessions, extractor)
+	mod, err := memory.NewModule(bus, store, sessions, extractor)
+	require.NoError(t, err)
 	require.NoError(t, mod.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
@@ -112,7 +115,8 @@ func TestMemoryModule_SkipsTurnWithNoMessages(t *testing.T) {
 	extractor := llmtest.NewCompleter(t) // no scripted turns — would fail if called
 	store := &stubMemoryStore{}
 
-	mod := memory.NewModule(bus, store, sessions, extractor)
+	mod, err := memory.NewModule(bus, store, sessions, extractor)
+	require.NoError(t, err)
 	require.NoError(t, mod.Init(ctx))
 	require.NoError(t, bus.Start(ctx))
 
