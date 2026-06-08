@@ -1,0 +1,321 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/issues [--all] [owner/name]
+
+Render GitHub milestones and issues in a tree.
+If owner/name is omitted, the script derives it from git remote origin.
+
+Requirements:
+  - gh
+  - jq
+
+Options:
+  --all   show closed milestones and closed issues too
+EOF
+}
+
+require_cmd() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    printf 'missing required command: %s\n' "$1" >&2
+    exit 1
+  fi
+}
+
+repo_from_origin() {
+  local remote
+  remote="$(git remote get-url origin 2>/dev/null || true)"
+  if [[ -z "$remote" ]]; then
+    printf 'missing repository argument and git remote origin is not configured\n' >&2
+    exit 1
+  fi
+
+  remote="${remote%.git}"
+  remote="${remote#git@github.com:}"
+  remote="${remote#https://github.com/}"
+  remote="${remote#ssh://git@github.com/}"
+
+  if [[ "$remote" != */* ]]; then
+    printf 'could not derive owner/name from origin: %s\n' "$remote" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$remote"
+}
+
+style() {
+  local code="$1"
+  shift
+  if [[ "${COLOR_ENABLED}" == "1" ]]; then
+    printf '\033[%sm%s\033[0m' "$code" "$*"
+  else
+    printf '%s' "$*"
+  fi
+}
+
+join_counts() {
+  local first=1
+  local item
+  for item in "$@"; do
+    if [[ "$first" == "1" ]]; then
+      printf '%s' "$item"
+      first=0
+    else
+      printf ', %s' "$item"
+    fi
+  done
+}
+
+state_text() {
+  case "$1" in
+    open) style "32" "[open]" ;;
+    closed) style "2" "[closed]" ;;
+    *) printf '[%s]' "$1" ;;
+  esac
+}
+
+branch() {
+  if [[ "$1" == "1" ]]; then
+    printf '└── '
+  else
+    printf '├── '
+  fi
+}
+
+trunk() {
+  if [[ "$1" == "1" ]]; then
+    printf '    '
+  else
+    printf '│   '
+  fi
+}
+
+require_cmd gh
+require_cmd jq
+
+SHOW_ALL=0
+REPO=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --all)
+      SHOW_ALL=1
+      shift
+      ;;
+    -*)
+      printf 'unknown option: %s\n' "$1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n "$REPO" ]]; then
+        printf 'unexpected argument: %s\n' "$1" >&2
+        usage >&2
+        exit 1
+      fi
+      REPO="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -z "$REPO" ]]; then
+  REPO="$(repo_from_origin)"
+fi
+TMP_DIR="$(mktemp -d)"
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+MILESTONES_JSON="$TMP_DIR/milestones.json"
+ISSUES_JSON="$TMP_DIR/issues.json"
+
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+  COLOR_ENABLED=1
+else
+  COLOR_ENABLED=0
+fi
+
+gh api --paginate "repos/$REPO/milestones?state=all&per_page=100" \
+  | jq -s 'add | sort_by(.number)' > "$MILESTONES_JSON"
+
+gh api --paginate "repos/$REPO/issues?state=all&per_page=100" \
+  | jq -s 'add | map(select(has("pull_request") | not)) | sort_by(.number)' > "$ISSUES_JSON"
+
+  printf '%s\n' "$REPO"
+
+milestone_numbers=()
+while IFS= read -r line; do
+  milestone_numbers+=("$line")
+done < <(jq -r '.[].number' "$MILESTONES_JSON")
+milestone_count="${#milestone_numbers[@]}"
+no_milestone_total="$(jq 'map(select(.milestone == null and (.state == "open" or .state == "closed"))) | length' "$ISSUES_JSON")"
+no_milestone_open_total="$(jq 'map(select(.milestone == null and .state == "open")) | length' "$ISSUES_JSON")"
+rendered_milestones=0
+
+should_show_issue() {
+  local state="$1"
+  if [[ "$SHOW_ALL" == "1" ]]; then
+    return 0
+  fi
+  [[ "$state" == "open" ]]
+}
+
+for i in "${!milestone_numbers[@]}"; do
+  number="${milestone_numbers[$i]}"
+  title="$(jq -r ".[] | select(.number == $number) | .title" "$MILESTONES_JSON")"
+  state="$(jq -r ".[] | select(.number == $number) | .state" "$MILESTONES_JSON")"
+  open_issues="$(jq -r ".[] | select(.number == $number) | .open_issues" "$MILESTONES_JSON")"
+  closed_issues="$(jq -r ".[] | select(.number == $number) | .closed_issues" "$MILESTONES_JSON")"
+
+  counts=()
+  if [[ "$open_issues" -gt 0 ]]; then
+    counts+=("${open_issues} open")
+  fi
+  if [[ "$closed_issues" -gt 0 ]]; then
+    counts+=("$(style "2" "${closed_issues} closed")")
+  fi
+  if [[ "${#counts[@]}" -eq 0 ]]; then
+    counts+=("$(style "2" "0 issues")")
+  fi
+
+  issue_rows=()
+  while IFS= read -r line; do
+    issue_rows+=("$line")
+  done < <(jq -r --argjson number "$number" '
+    map(select(.milestone != null and .milestone.number == $number))
+    | sort_by(.number)
+    | .[]
+    | [.number, .title, .state]
+    | @tsv
+  ' "$ISSUES_JSON")
+
+  visible_issue_rows=()
+  for row in "${issue_rows[@]}"; do
+    IFS=$'\t' read -r issue_number issue_title issue_state <<<"$row"
+    if should_show_issue "$issue_state"; then
+      visible_issue_rows+=("$row")
+    fi
+  done
+
+  if [[ "$SHOW_ALL" != "1" && "$state" != "open" ]]; then
+    continue
+  fi
+
+  if [[ "$SHOW_ALL" != "1" && "${#visible_issue_rows[@]}" -eq 0 && "$state" != "open" ]]; then
+    continue
+  fi
+
+  rendered_milestones=$(( rendered_milestones + 1 ))
+
+  has_no_milestone=0
+  if [[ "$SHOW_ALL" == "1" && "$no_milestone_total" -gt 0 ]]; then
+    has_no_milestone=1
+  fi
+  if [[ "$SHOW_ALL" != "1" && "$no_milestone_open_total" -gt 0 ]]; then
+    has_no_milestone=1
+  fi
+
+  remaining_milestones=0
+  for later_index in "${!milestone_numbers[@]}"; do
+    if [[ "$later_index" -le "$i" ]]; then
+      continue
+    fi
+    later_number="${milestone_numbers[$later_index]}"
+    later_state="$(jq -r ".[] | select(.number == $later_number) | .state" "$MILESTONES_JSON")"
+    if [[ "$SHOW_ALL" == "1" ]]; then
+      remaining_milestones=1
+      break
+    fi
+    if [[ "$later_state" == "open" ]]; then
+      remaining_milestones=1
+      break
+    fi
+  done
+
+  if [[ "$remaining_milestones" -eq 0 && "$has_no_milestone" -eq 0 ]]; then
+    is_last=1
+  else
+    is_last=0
+  fi
+
+  printf '%s%s\n' \
+    "$(branch "$is_last")" \
+    "$(style "34" "milestone #${number}: ${title} $(state_text "$state") ($(join_counts "${counts[@]}"))")"
+
+  for j in "${!visible_issue_rows[@]}"; do
+    IFS=$'\t' read -r issue_number issue_title issue_state <<<"${visible_issue_rows[$j]}"
+    if [[ "$j" -eq $(( ${#visible_issue_rows[@]} - 1 )) ]]; then
+      issue_last=1
+    else
+      issue_last=0
+    fi
+    printf '%s%s#%s %s %s\n' \
+      "$(trunk "$is_last")" \
+      "$(branch "$issue_last")" \
+      "$issue_number" \
+      "$issue_title" \
+      "$(state_text "$issue_state")"
+  done
+done
+
+no_milestone_rows=()
+while IFS= read -r line; do
+  no_milestone_rows+=("$line")
+done < <(jq -r '
+  map(select(.milestone == null))
+  | sort_by(.number)
+  | .[]
+  | [.number, .title, .state]
+  | @tsv
+' "$ISSUES_JSON")
+
+if [[ "${#no_milestone_rows[@]}" -gt 0 ]]; then
+  open_no_milestone="$(jq 'map(select(.milestone == null and .state == "open")) | length' "$ISSUES_JSON")"
+  closed_no_milestone="$(jq 'map(select(.milestone == null and .state == "closed")) | length' "$ISSUES_JSON")"
+  counts=()
+  if [[ "$open_no_milestone" -gt 0 ]]; then
+    counts+=("${open_no_milestone} open")
+  fi
+  if [[ "$closed_no_milestone" -gt 0 ]]; then
+    counts+=("$(style "2" "${closed_no_milestone} closed")")
+  fi
+  if [[ "${#counts[@]}" -eq 0 ]]; then
+    counts+=("$(style "2" "0 issues")")
+  fi
+
+  visible_no_milestone_rows=()
+  for row in "${no_milestone_rows[@]}"; do
+    IFS=$'\t' read -r issue_number issue_title issue_state <<<"$row"
+    if should_show_issue "$issue_state"; then
+      visible_no_milestone_rows+=("$row")
+    fi
+  done
+
+  if [[ "${#visible_no_milestone_rows[@]}" -eq 0 ]]; then
+    exit 0
+  fi
+
+  printf '%s%s\n' \
+    "└── " \
+    "$(style "33" "no milestone ($(join_counts "${counts[@]}"))")"
+
+  for i in "${!visible_no_milestone_rows[@]}"; do
+    IFS=$'\t' read -r issue_number issue_title issue_state <<<"${visible_no_milestone_rows[$i]}"
+    if [[ "$i" -eq $(( ${#visible_no_milestone_rows[@]} - 1 )) ]]; then
+      issue_last=1
+    else
+      issue_last=0
+    fi
+    printf '    %s#%s %s %s\n' \
+      "$(branch "$issue_last")" \
+      "$issue_number" \
+      "$issue_title" \
+      "$(state_text "$issue_state")"
+  done
+fi
