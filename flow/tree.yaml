@@ -181,6 +181,38 @@
     - Hector picks up on preferred formats, terminology, and practices organically
     open_questions: []
     children: []
+  - slug: mem.retrieval
+    title: Org Knowledge Retrieval
+    description: Hector recalls documented facts about the org and surfaces them when
+      relevant
+    status: idea
+    priority: P0
+    stories:
+    - Hector recalls facts about an entity when its name is mentioned. For example,
+      asking what language the auth service uses returns the answer without further
+      explanation.
+    - Hector recalls facts about an entity even when it is not directly named. For
+      example, asking what our VCS is returns GitHub even though the stored fact says
+      we host code on GitHub.
+    - Hector surfaces connections between entities when they are relevant. For example,
+      asking who works on auth returns people known to be associated with it.
+    open_questions: []
+    children: []
+  - slug: mem.integrity
+    title: Knowledge Integrity
+    description: Hector is honest about the quality, currency, and absence of what
+      it knows
+    status: idea
+    priority: P0
+    stories:
+    - Hector qualifies recalled facts by how it knows them. For example, something
+      reported in Slack is presented as reported, not as verified fact.
+    - Hector returns the current state of a fact, not a superseded one. For example,
+      if a practice changed, Hector reflects the new one.
+    - Hector says when it has no documented knowledge rather than guessing. For example,
+      asking about our gRPC policy returns no documented position if none exists.
+    open_questions: []
+    children: []
 - slug: policies
   title: Policies
   description: Expressive access control — who can interact with Hector, how, and
@@ -538,6 +570,30 @@
     - Key metrics are available for latency, token usage, and tool call rates
     - Metrics feed into tuning and alerting workflows
     open_questions: []
+    children: []
+  - slug: observability.evals
+    title: Evaluations
+    description: Developers evaluate Hector agent quality using Harbor — write YAML
+      cases, run them, get scored results
+    status: idea
+    priority: P1
+    stories:
+    - Developers write eval cases in YAML — prompt, optional attachments by path,
+      and judge config with rubric criteria
+    - Hector emits an ATIF-compatible trajectory when run with --trajectory-out, capturing
+      the prompt, tool calls with args, tool results, and final response
+    - Eval sessions are isolated — no side effects to production memory, sessions,
+      or integrations
+    - Developers run eval cases via Harbor and get per-case pass/fail results with
+      per-criterion scores
+    - Eval runs produce structured exit codes so they can run in CI
+    nfrs:
+    - No overhead when --trajectory-out is absent — trajectory recording is off by
+      default
+    - Trajectory output is ATIF-compatible so Harbor can consume it without transformation
+    open_questions:
+    - Should multi-turn eval (scripted turns or LLM-simulated user) be scoped into
+      a follow-on feature, or noted as a known extension point here?
     children: []
 - slug: workflows
   title: Workflows
