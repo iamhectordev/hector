@@ -30,6 +30,12 @@ import (
 	"github.com/iamhectordev/hector/pkg/migrations"
 )
 
+type record struct {
+	ID   string    `json:"id"`
+	Text string    `json:"text"`
+	Vec  []float32 `json:"vec"`
+}
+
 func TestSciFact(t *testing.T) {
 	dir := os.Getenv("SCIFACT_CORPUS")
 	if dir == "" {
@@ -38,11 +44,6 @@ func TestSciFact(t *testing.T) {
 
 	ctx := context.Background()
 
-	type record struct {
-		ID   string    `json:"id"`
-		Text string    `json:"text"`
-		Vec  []float32 `json:"vec"`
-	}
 	type qrel struct {
 		QueryID string `json:"query_id"`
 		DocID   string `json:"doc_id"`
@@ -54,7 +55,7 @@ func TestSciFact(t *testing.T) {
 		if err != nil {
 			log.Fatalf("open %s: %v", name, err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		var out []record
 		sc := bufio.NewScanner(f)
 		sc.Buffer(make([]byte, 4<<20), 4<<20)
@@ -73,14 +74,19 @@ func TestSciFact(t *testing.T) {
 	embeddings := load("embeddings.jsonl")
 
 	var qrels []qrel
-	f, _ := os.Open(filepath.Join(dir, "qrels.jsonl"))
+	f, err := os.Open(filepath.Join(dir, "qrels.jsonl"))
+	if err != nil {
+		log.Fatalf("open qrels.jsonl: %v", err)
+	}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		var q qrel
-		json.Unmarshal(sc.Bytes(), &q)
+		if err := json.Unmarshal(sc.Bytes(), &q); err != nil {
+			log.Fatalf("parse qrels.jsonl: %v", err)
+		}
 		qrels = append(qrels, q)
 	}
-	f.Close()
+	_ = f.Close()
 
 	// id → vec
 	idToVec := make(map[string][]float32, len(embeddings))
@@ -112,6 +118,11 @@ func TestSciFact(t *testing.T) {
 		}
 	}
 
+	corpusText := make(map[string]string, len(corpus))
+	for _, d := range corpus {
+		corpusText[d.ID] = d.Text
+	}
+
 	// only evaluate queries that have at least one relevant doc
 	var evalQueries []record
 	for _, q := range queries {
@@ -131,7 +142,9 @@ func TestSciFact(t *testing.T) {
 		}
 		db.SetMaxOpenConns(1)
 		runner := migrations.New(db)
-		runner.Add(memorysqlite.Migrations())
+		if err := runner.Add(memorysqlite.Migrations()); err != nil {
+			t.Fatal(err)
+		}
 		if err := runner.Run(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -162,7 +175,11 @@ func TestSciFact(t *testing.T) {
 			results[q.ID] = ids
 		}
 
-		db.Close()
+		_ = db.Close()
+
+		if debugDir := os.Getenv("SCIFACT_DEBUG_OUT"); debugDir != "" {
+			writeDebug(t, debugDir, hybrid, evalQueries, results, relevant, corpusText)
+		}
 
 		mode := "FTS only"
 		if hybrid {
@@ -201,6 +218,84 @@ func recall(results map[string][]string, relevant map[string]map[string]struct{}
 		}
 	}
 	return hit / float64(len(results))
+}
+
+func writeDebug(
+	t *testing.T,
+	dir string,
+	hybrid bool,
+	queries []record,
+	results map[string][]string,
+	relevant map[string]map[string]struct{},
+	corpusText map[string]string,
+) {
+	t.Helper()
+	modeSlug := "fts_only"
+	if hybrid {
+		modeSlug = "hybrid"
+	}
+
+	type retDoc struct {
+		Rank     int    `json:"rank"`
+		ID       string `json:"id"`
+		Text     string `json:"text"`
+		Relevant bool   `json:"relevant"`
+	}
+	type relDoc struct {
+		ID   string `json:"id"`
+		Text string `json:"text"`
+	}
+	type entry struct {
+		QueryID  string   `json:"query_id"`
+		Query    string   `json:"query"`
+		Relevant []relDoc `json:"relevant"`
+		Returned []retDoc `json:"returned"`
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create debug dir: %v", err)
+	}
+	outPath := filepath.Join(dir, modeSlug+".jsonl")
+	outF, err := os.Create(outPath)
+	if err != nil {
+		t.Fatalf("create debug file: %v", err)
+	}
+	defer func() { _ = outF.Close() }()
+
+	enc := json.NewEncoder(outF)
+	var written int
+	for _, q := range queries {
+		ids := results[q.ID]
+		// skip recall@1 hits — only write misses
+		if len(ids) > 0 {
+			if _, ok := relevant[q.ID][ids[0]]; ok {
+				continue
+			}
+		}
+
+		rel := relevant[q.ID]
+		relDocs := make([]relDoc, 0, len(rel))
+		for rid := range rel {
+			relDocs = append(relDocs, relDoc{ID: rid, Text: corpusText[rid]})
+		}
+
+		retDocs := make([]retDoc, len(ids))
+		for i, id := range ids {
+			_, isRel := rel[id]
+			retDocs[i] = retDoc{Rank: i + 1, ID: id, Text: corpusText[id], Relevant: isRel}
+		}
+
+		if err := enc.Encode(entry{
+			QueryID:  q.ID,
+			Query:    q.Text,
+			Relevant: relDocs,
+			Returned: retDocs,
+		}); err != nil {
+			t.Fatalf("write debug record: %v", err)
+		}
+		written++
+	}
+	fmt.Printf("  [debug] %d recall@1 misses → %s\n", written, outPath)
 }
 
 func ndcg(results map[string][]string, relevant map[string]map[string]struct{}, k int) float64 {
