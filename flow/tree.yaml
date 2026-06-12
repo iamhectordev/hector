@@ -573,13 +573,13 @@
     children: []
   - slug: observability.evals
     title: Evaluations
-    description: Developers evaluate Hector agent quality using Harbor — write YAML
-      cases, run them, get scored results
+    description: Developers evaluate Hector agent quality using Harbor — write Harbor
+      task directories, run them, get scored results
     status: idea
     priority: P1
     stories:
-    - Developers write eval cases in YAML — prompt, optional attachments by path,
-      and judge config with rubric criteria
+    - Developers write Harbor task directories — instruction.md as the prompt, task.toml
+      for config, and a verifier script with rubric criteria in TOML
     - Hector emits an ATIF-compatible trajectory when run with --trajectory-out, capturing
       the prompt, tool calls with args, tool results, and final response
     - Eval sessions are isolated — no side effects to production memory, sessions,
