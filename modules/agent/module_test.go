@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
@@ -14,8 +15,165 @@ import (
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"strings"
 )
+
+func TestModule_IgnoresMessageWhenPerceptionSaysIgnore(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+
+	runner := &runnerSpy{}
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, runner,
+			agent.WithSessionStore(moduleTestSessionStore{}),
+			agent.WithPerceiver(staticPerceiver{result: agent.PerceptionResult{
+				Action: agent.PerceptionActionIgnore,
+				Reason: "ambient chatter",
+			}}),
+			agent.WithConfig(agent.Config{
+				Perception: agent.PerceptionConfig{Enabled: true},
+			}),
+		),
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
+	require.NoError(t, err)
+
+	go sv.Run(ctx)
+
+	require.Eventually(t, func() bool {
+		err = bus.Record(context.Background(), islack.MessageReceived.New(islack.MessageReceivedData{
+			Channel:  islack.Channel{ID: "D123", Type: islack.ChannelTypeDM},
+			ThreadTS: "1710000000.000100",
+			TS:       "1710000000.000100",
+			Sender:   islack.Sender{ID: "U123", Name: "alice"},
+			Text:     "hello there",
+		}))
+		return err == nil
+	}, 2*time.Second, 20*time.Millisecond)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return runner.CallCount() == 0
+	}, 500*time.Millisecond, 20*time.Millisecond)
+
+	cancel()
+	require.NoError(t, bus.Shutdown(context.Background()))
+}
+
+func TestModule_QueuesMessageWhenPerceptionSaysQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+
+	runner := &runnerSpy{}
+	turnEnded := make(chan struct{}, 1)
+	err = waffle.On(bus, agent.TurnEnd).Handle("test.capture", func(_ context.Context, _ waffle.Event[agent.TurnEndData]) error {
+		select {
+		case turnEnded <- struct{}{}:
+		default:
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, runner,
+			agent.WithSessionStore(moduleTestSessionStore{}),
+			agent.WithPerceiver(staticPerceiver{result: agent.PerceptionResult{
+				Action: agent.PerceptionActionQueue,
+				Reason: "direct question",
+			}}),
+			agent.WithConfig(agent.Config{
+				Perception: agent.PerceptionConfig{Enabled: true},
+			}),
+		),
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
+	require.NoError(t, err)
+
+	go sv.Run(ctx)
+
+	require.Eventually(t, func() bool {
+		err = bus.Record(context.Background(), islack.MessageReceived.New(islack.MessageReceivedData{
+			Channel:  islack.Channel{ID: "D123", Type: islack.ChannelTypeDM},
+			ThreadTS: "1710000000.000100",
+			TS:       "1710000000.000100",
+			Sender:   islack.Sender{ID: "U123", Name: "alice"},
+			Text:     "can you help?",
+		}))
+		return err == nil
+	}, 2*time.Second, 20*time.Millisecond)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return runner.CallCount() == 1
+	}, 2*time.Second, 20*time.Millisecond)
+
+	select {
+	case <-turnEnded:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for TurnEnd event")
+	}
+
+	cancel()
+	require.NoError(t, bus.Shutdown(context.Background()))
+}
+
+func TestModule_TracesPerceptionDecision(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	recorder := newSpanRecorder(t)
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+
+	runner := &runnerSpy{}
+	sv, err := supervisor.New([]supervisor.Module{
+		agent.NewModule(bus, runner,
+			agent.WithSessionStore(moduleTestSessionStore{}),
+			agent.WithPerceiver(staticPerceiver{result: agent.PerceptionResult{
+				Action: agent.PerceptionActionQueue,
+				Reason: "direct question",
+			}}),
+			agent.WithConfig(agent.Config{
+				Perception: agent.PerceptionConfig{Enabled: true},
+			}),
+		),
+	}, supervisor.WithPostInitHook("bus.start", bus.Start))
+	require.NoError(t, err)
+
+	go sv.Run(ctx)
+
+	require.Eventually(t, func() bool {
+		err = bus.Record(context.Background(), islack.MessageReceived.New(islack.MessageReceivedData{
+			Channel:  islack.Channel{ID: "D123", Type: islack.ChannelTypeDM},
+			ThreadTS: "1710000000.000100",
+			TS:       "1710000000.000100",
+			Sender:   islack.Sender{ID: "U123", Name: "alice"},
+			Text:     "can you help?",
+		}))
+		return err == nil
+	}, 2*time.Second, 20*time.Millisecond)
+	require.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return runner.CallCount() == 1
+	}, 2*time.Second, 20*time.Millisecond)
+
+	span := findSpan(t, recorder.Ended(), "agent.perception.assess")
+	require.Equal(t, int64(0), requireSpanAttrInt(t, span, "agent.history_message_count"))
+	require.Equal(t, int64(1), requireSpanAttrInt(t, span, "agent.incoming_message_count"))
+	require.Equal(t, "queue", requireSpanAttr(t, span, "agent.perception.action"))
+
+	cancel()
+	require.NoError(t, bus.Shutdown(context.Background()))
+}
 
 func TestModule_EmitsTurnEndAfterSuccessfulTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
@@ -126,4 +284,77 @@ func (c *signallingErrorCompleter) Complete(_ context.Context, _ schema.Completi
 	default:
 	}
 	return nil, llmtest.ErrLLMDown
+}
+
+type staticPerceiver struct {
+	result agent.PerceptionResult
+	err    error
+}
+
+func (p staticPerceiver) Assess(_ context.Context, _ []*schema.Message, _ []*schema.Message) (agent.PerceptionResult, error) {
+	return p.result, p.err
+}
+
+type runnerSpy struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (r *runnerSpy) Run(_ context.Context, _ agent.Context, _ string, _ []*schema.Message) (*schema.Message, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls++
+	reply := schema.AssistantMessage("ok")
+	reply.FinishReason = schema.FinishReasonStop
+	return reply, nil
+}
+
+func (r *runnerSpy) CallCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
+}
+
+func newSpanRecorder(t *testing.T) *tracetest.SpanRecorder {
+	t.Helper()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		require.NoError(t, provider.Shutdown(context.Background()))
+	})
+	return recorder
+}
+
+func findSpan(t *testing.T, spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {
+	t.Helper()
+	for _, span := range spans {
+		if span.Name() == name {
+			return span
+		}
+	}
+	t.Fatalf("missing span %q", name)
+	return nil
+}
+
+func requireSpanAttr(t *testing.T, span sdktrace.ReadOnlySpan, key string) string {
+	t.Helper()
+	for _, attr := range span.Attributes() {
+		if string(attr.Key) == key {
+			return attr.Value.AsString()
+		}
+	}
+	t.Fatalf("missing attr %q on span %q", key, span.Name())
+	return ""
+}
+
+func requireSpanAttrInt(t *testing.T, span sdktrace.ReadOnlySpan, key string) int64 {
+	t.Helper()
+	for _, attr := range span.Attributes() {
+		if string(attr.Key) == key {
+			return attr.Value.AsInt64()
+		}
+	}
+	t.Fatalf("missing attr %q on span %q", key, span.Name())
+	return 0
 }

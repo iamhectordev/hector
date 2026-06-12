@@ -224,13 +224,23 @@ func (r *Runtime) initModules(
 	loop := agent.NewLoop(completer,
 		agent.WithTools(toolRegistry),
 	)
+	var perceiver agent.Perceiver
+	var err error
+	if r.cfg.Agent.Perception.Enabled {
+		perceiver, err = agent.NewStructuredPerceiver(completer)
+		if err != nil {
+			return nil, err
+		}
+	}
 	memMod, err := memorymod.NewModule(r.bus, memStore, sessionStore, completer)
 	if err != nil {
 		return nil, err
 	}
 	modules = append(modules,
 		agent.NewModule(r.bus, loop,
+			agent.WithConfig(r.cfg.Agent),
 			agent.WithBaseSystem(agent.SystemPrompt),
+			agent.WithPerceiver(perceiver),
 			agent.WithSessionStore(sessionStore),
 		),
 		toolsModule,

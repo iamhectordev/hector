@@ -117,12 +117,7 @@ func (m *Module) onTUIMessage(ctx context.Context, e waffle.Event[tui.MessageRec
 		return err
 	}
 
-	agentCtx, err := m.newAgentContext(sourceURI)
-	if err != nil {
-		return err
-	}
-
-	if err := m.handle(ctx, agentCtx, system, []*schema.Message{schema.UserMessage(content)}); err != nil {
+	if err := m.processor.Handle(ctx, sourceURI, system, []*schema.Message{schema.UserMessage(content)}); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process tui message",
 			telem.String("event_id", e.ID()),
 			telem.String("event_type", e.Type()),
@@ -174,12 +169,7 @@ func (m *Module) processSlackMessage(ctx context.Context, eventID, eventType, lo
 		return err
 	}
 
-	agentCtx, err := m.newAgentContext(sourceURI)
-	if err != nil {
-		return err
-	}
-
-	if err := m.handle(ctx, agentCtx, system, slackUserMessages(content, images)); err != nil {
+	if err := m.processor.Handle(ctx, sourceURI, system, slackUserMessages(content, images)); err != nil {
 		m.log(ctx).ErrorContext(ctx, "agent failed to process "+logLabel,
 			telem.String("event_id", eventID),
 			telem.String("event_type", eventType),

@@ -7,9 +7,23 @@ import (
 )
 
 const (
-	spanTurnRun  = "agent.turn.run"
-	spanToolCall = "tool.call"
+	spanPerceptionAssess = "agent.perception.assess"
+	spanTurnRun          = "agent.turn.run"
+	spanToolCall         = "tool.call"
 )
+
+func perceptionFields(history, incoming []*schema.Message) []telem.Field {
+	return []telem.Field{
+		telem.Int("agent.history_message_count", len(history)),
+		telem.Int("agent.incoming_message_count", len(incoming)),
+	}
+}
+
+func perceptionResultFields(result PerceptionResult) []telem.Field {
+	return []telem.Field{
+		telem.String("agent.perception.action", string(result.Action)),
+	}
+}
 
 func turnFields(messages []*schema.Message, tools ToolRuntime) []telem.Field {
 	fields := []telem.Field{

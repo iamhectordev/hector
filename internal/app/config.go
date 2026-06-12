@@ -6,6 +6,7 @@ import (
 	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
+	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/memory"
@@ -16,6 +17,7 @@ type Config struct {
 	kleelog.Config `yaml:"log"`
 	DB             dbsqlite.Config `yaml:"db"`
 	LLM            llm.Config      `yaml:"llm"`
+	Agent          agent.Config    `yaml:"agent"`
 	Memory         memory.Config   `yaml:"memory"`
 	Tracing        tracing.Config  `yaml:"tracing"`
 	WebSearch      search.Config   `yaml:"web_search"`

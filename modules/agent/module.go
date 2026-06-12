@@ -5,7 +5,6 @@ import (
 
 	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/modules/tui"
-	"github.com/iamhectordev/hector/pkg/llm/schema"
 	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
@@ -14,9 +13,11 @@ import (
 // Module receives messages from surfaces and dispatches them to the runner.
 type Module struct {
 	bus        *waffle.EventBus
-	runner     Runner
 	sessions   session.Store
+	perceiver  Perceiver
 	baseSystem string
+	cfg        Config
+	processor  *Processor
 }
 
 // Option configures a Module.
@@ -32,14 +33,24 @@ func WithSessionStore(store session.Store) Option {
 	return func(m *Module) { m.sessions = store }
 }
 
+// WithPerceiver sets the pre-turn assessor.
+func WithPerceiver(perceiver Perceiver) Option {
+	return func(m *Module) { m.perceiver = perceiver }
+}
+
+// WithConfig sets agent module config.
+func WithConfig(cfg Config) Option {
+	return func(m *Module) { m.cfg = cfg }
+}
+
 func NewModule(bus *waffle.EventBus, runner Runner, opts ...Option) *Module {
 	m := &Module{
-		bus:    bus,
-		runner: runner,
+		bus: bus,
 	}
 	for _, opt := range opts {
 		opt(m)
 	}
+	m.processor = NewProcessor(bus, runner, m.sessions, m.perceiver, m.cfg)
 	return m
 }
 
@@ -69,36 +80,6 @@ func (m *Module) Start(ctx context.Context) error {
 }
 
 func (m *Module) Stop(context.Context) error { return nil }
-
-func (m *Module) newAgentContext(sourceURI string) (Context, error) {
-	return NewSessionContext(m.sessions, sourceURI)
-}
-
-func (m *Module) handle(ctx context.Context, agentCtx Context, system string, messages []*schema.Message) error {
-	history, _ := agentCtx.Messages(ctx)
-	turnOffset := len(history)
-
-	_, err := m.runner.Run(ctx, agentCtx, system, messages)
-	if err != nil {
-		return err
-	}
-
-	sess, _ := session.From(ctx)
-	var sessionID string
-	if m.sessions != nil {
-		if stored, err := m.sessions.GetOrCreate(ctx, sess.SourceURI); err == nil {
-			sessionID = stored.ID
-		}
-	}
-	if recordErr := m.bus.Record(ctx, TurnEnd.New(TurnEndData{
-		SessionID:  sessionID,
-		SourceURI:  sess.SourceURI,
-		TurnOffset: turnOffset,
-	})); recordErr != nil {
-		m.log(ctx).WarnContext(ctx, "failed to record turn_end event", telem.Any("err", recordErr))
-	}
-	return nil
-}
 
 func (m *Module) log(ctx context.Context) telem.ContextLogger {
 	return telem.Logger(ctx).With(
