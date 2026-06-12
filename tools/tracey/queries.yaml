@@ -1,0 +1,73 @@
+$schema: https://raw.githubusercontent.com/iamhectordev/hector/main/tools/tracey/queries.schema.json
+
+x-read-opts: &read_opts
+  format: 'newline_delimited'
+  sample_size: -1
+  union_by_name: true
+
+session-traces:
+  description: "All spans across traces that belong to a session"
+  args:
+    session_id: "session ID to filter by"
+  query: |
+    WITH matching AS (
+      SELECT DISTINCT trace_id
+      FROM read_json_auto('{path}', format='newline_delimited', sample_size=-1, union_by_name=true)
+      WHERE attributes['session.id']::VARCHAR = '{session_id}'
+    )
+    SELECT t.trace_id, t.span_id, t.parent_span_id, t.name,
+           t.kind, t.duration_nano / 1e6 AS duration_ms,
+           t.status_code, t.status_description
+    FROM read_json_auto('{path}', format='newline_delimited', sample_size=-1, union_by_name=true) t
+    JOIN matching m ON t.trace_id = m.trace_id
+    ORDER BY t.trace_id, t.start_unix_nano;
+
+failed-tools:
+  description: "Tool calls that ended with an error"
+  query: |
+    SELECT trace_id, span_id, name,
+           duration_nano / 1e6 AS duration_ms,
+           status_description,
+           attributes['tool.name']::VARCHAR AS tool_name,
+           attributes['tool.call_id']::VARCHAR AS call_id
+    FROM read_json_auto('{path}', format='newline_delimited', sample_size=-1, union_by_name=true)
+    WHERE kind = 'internal'
+      AND status_code = 'error'
+    ORDER BY duration_nano DESC;
+
+trace-tree:
+  description: "Reconstruct parent/child tree for a trace"
+  args:
+    trace_id: "trace ID to tree"
+  query: |
+    SELECT span_id, parent_span_id, name, kind,
+           duration_nano / 1e6 AS duration_ms, status_code
+    FROM read_json_auto('{path}', format='newline_delimited', sample_size=-1, union_by_name=true)
+    WHERE trace_id = '{trace_id}'
+    ORDER BY parent_span_id NULLS FIRST, start_unix_nano;
+
+tool-stats:
+  description: "Tool usage counts including failures"
+  query: |
+    SELECT attributes['tool.name']::VARCHAR AS tool_name,
+           count(*) AS calls,
+           count(*) FILTER (WHERE status_code = 'error') AS failures,
+           round(avg(duration_nano) / 1e6, 2) AS avg_duration_ms
+    FROM read_json_auto('{path}', format='newline_delimited', sample_size=-1, union_by_name=true)
+    WHERE kind = 'internal'
+    GROUP BY tool_name
+    ORDER BY calls DESC;
+
+slow-spans:
+  description: "Spans by descending duration"
+  args:
+    min_ms:
+      description: "minimum duration in ms (default: 0)"
+      default: "0"
+  query: |
+    SELECT name, kind, duration_nano / 1e6 AS duration_ms,
+           trace_id, span_id, status_code
+    FROM read_json_auto('{path}', format='newline_delimited', sample_size=-1, union_by_name=true)
+    WHERE duration_nano / 1e6 >= {min_ms}::DOUBLE
+    ORDER BY duration_nano DESC
+    LIMIT 20;

@@ -1,0 +1,115 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = [
+#   "duckdb>=1.0",
+#   "pyyaml>=6.0",
+# ]
+# ///
+"""
+Trace query runner for Hector JSONL span exports.
+
+Usage:
+  tracey list-queries                  List available queries
+  tracey query <name> <path> [key=val ...]   Run a query
+
+Examples:
+  tracey query session-traces traces.jsonl session_id=sess_123
+  tracey query trace-tree traces.jsonl trace_id=abc123
+  tracey query tool-stats traces.jsonl
+"""
+
+import sys
+import yaml
+from pathlib import Path
+
+QUERIES_PATH = Path(__file__).parent / "queries.yaml"
+
+
+def load_queries():
+    with open(QUERIES_PATH) as f:
+        raw = yaml.safe_load(f)
+    if raw is None:
+        print("error: queries.yaml is empty", file=sys.stderr)
+        sys.exit(1)
+    if "$schema" in raw:
+        del raw["$schema"]
+    return raw
+
+
+def list_queries(queries):
+    print(f"Queries from {QUERIES_PATH}")
+    print()
+    for name, spec in sorted(queries.items()):
+        desc = spec.get("description", "")
+        args = spec.get("args", {})
+        arg_str = " ".join(f"<{k}>" for k in args) if args else ""
+        print(f"  {name} {arg_str}")
+        print(f"      {desc}")
+
+
+def run_query(queries, name, path, args_dict):
+    spec = queries.get(name)
+    if spec is None:
+        print(f"error: unknown query {name!r}", file=sys.stderr)
+        print("use 'list-queries' to see available queries", file=sys.stderr)
+        sys.exit(1)
+
+    required = {k for k, v in spec.get("args", {}).items()
+                if isinstance(v, dict) and "default" not in v}
+    for k in required:
+        if k not in args_dict:
+            print(f"error: query {name!r} requires argument {k!r}", file=sys.stderr)
+            sys.exit(1)
+
+    vars_dict = {"path": path, **args_dict}
+    for k, v in spec.get("args", {}).items():
+        if isinstance(v, dict) and "default" in v and k not in vars_dict:
+            vars_dict[k] = v["default"]
+
+    query = spec["query"]
+    for k, v in vars_dict.items():
+        query = query.replace(f"{{{k}}}", str(v))
+
+    import duckdb
+
+    try:
+        result = duckdb.sql(query)
+        result.show()
+    except duckdb.Error as e:
+        print(f"error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    queries = load_queries()
+
+    if len(sys.argv) < 2:
+        print(__doc__, end="")
+        sys.exit(1)
+
+    command = sys.argv[1]
+
+    if command == "list-queries":
+        list_queries(queries)
+    elif command == "query":
+        if len(sys.argv) < 4:
+            print("usage: tracey query <name> <path> [key=val ...]", file=sys.stderr)
+            sys.exit(1)
+        name = sys.argv[2]
+        path = sys.argv[3]
+        args_dict = {}
+        for kv in sys.argv[4:]:
+            if "=" not in kv:
+                print(f"error: expected key=val, got {kv!r}", file=sys.stderr)
+                sys.exit(1)
+            k, v = kv.split("=", 1)
+            args_dict[k] = v
+        run_query(queries, name, path, args_dict)
+    else:
+        print(f"error: unknown command {command!r}", file=sys.stderr)
+        print(__doc__, end="")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

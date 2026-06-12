@@ -27,17 +27,17 @@ type spanRecord struct {
 	SchemaVersion     int            `json:"schema_version"`
 	TraceID           string         `json:"trace_id"`
 	SpanID            string         `json:"span_id"`
-	ParentSpanID      string         `json:"parent_span_id,omitempty"`
+	ParentSpanID      string         `json:"parent_span_id"`
 	Name              string         `json:"name"`
 	Kind              string         `json:"kind"`
 	StartUnixNano     int64          `json:"start_unix_nano"`
 	EndUnixNano       int64          `json:"end_unix_nano"`
 	DurationNano      int64          `json:"duration_nano"`
 	StatusCode        string         `json:"status_code"`
-	StatusDescription string         `json:"status_description,omitempty"`
+	StatusDescription string         `json:"status_description"`
 	ServiceName       string         `json:"service_name,omitempty"`
-	Attributes        map[string]any `json:"attributes,omitempty"`
-	Events            []eventRecord  `json:"events,omitempty"`
+	Attributes        map[string]any `json:"attributes"`
+	Events            []eventRecord  `json:"events"`
 }
 
 type eventRecord struct {
