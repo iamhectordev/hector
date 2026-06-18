@@ -3,6 +3,7 @@ package app
 import (
 	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
+	"github.com/iamhectordev/hector/internal/email"
 	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
@@ -22,5 +23,6 @@ type Config struct {
 	Tracing        tracing.Config  `yaml:"tracing"`
 	WebSearch      search.Config   `yaml:"web_search"`
 	GitHub         gh.Config       `yaml:"github"`
+	Email          email.Config    `yaml:"email"`
 	Slack          slack.Config    `yaml:"slack"`
 }
