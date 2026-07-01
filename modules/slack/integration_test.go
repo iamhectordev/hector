@@ -370,6 +370,165 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
+func TestModule_Start_AllowListPassesListedUser(t *testing.T) {
+	t.Parallel()
+
+	srv := mock.New(t)
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, bus.Shutdown(context.Background()))
+	})
+
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+		got <- e.Data()
+		return nil
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		m, err := module.NewModule(bus, module.Config{
+			AppToken:   "xapp-fake-token",
+			BotToken:   "xoxb-fake-token",
+			APIURL:     srv.BaseURL() + "/api/",
+			AllowUsers: []string{"U222"},
+		})
+		if err != nil {
+			done <- err
+			return
+		}
+		if err := m.Init(ctx); err != nil {
+			done <- err
+			return
+		}
+		if err := bus.Start(ctx); err != nil {
+			done <- err
+			return
+		}
+		done <- m.Start(ctx)
+	}()
+
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Alice"},
+		},
+	})
+	srv.ExpectWithResponse("conversations.info", map[string]any{
+		"ok":      true,
+		"channel": map[string]any{"id": "D111", "name": "dm-alice"},
+	})
+
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D111",
+		User:        "U222",
+		Text:        "hello from allowed user",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+	}))
+
+	select {
+	case data := <-got:
+		require.Equal(t, "U222", data.Sender.ID)
+		require.Equal(t, "hello from allowed user", data.Text)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for slack message event")
+	}
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
+func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
+	t.Parallel()
+
+	srv := mock.New(t)
+	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, bus.Shutdown(context.Background()))
+	})
+
+	got := make(chan islack.MessageReceivedData, 1)
+	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+		got <- e.Data()
+		return nil
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		m, err := module.NewModule(bus, module.Config{
+			AppToken:   "xapp-fake-token",
+			BotToken:   "xoxb-fake-token",
+			APIURL:     srv.BaseURL() + "/api/",
+			AllowUsers: []string{"U222"},
+		})
+		if err != nil {
+			done <- err
+			return
+		}
+		if err := m.Init(ctx); err != nil {
+			done <- err
+			return
+		}
+		if err := bus.Start(ctx); err != nil {
+			done <- err
+			return
+		}
+		done <- m.Start(ctx)
+	}()
+
+	// Push from blocked user first — no enrichment expected (filter fires before enrichment).
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D111",
+		User:        "U999",
+		Text:        "hello from blocked user",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000100",
+	}))
+
+	// Push from allowed user next. When this arrives on the bus, U999's was already processed.
+	srv.ExpectWithResponse("users.info", map[string]any{
+		"ok": true,
+		"user": map[string]any{
+			"id":      "U222",
+			"profile": map[string]any{"display_name": "Alice"},
+		},
+	})
+	srv.ExpectWithResponse("conversations.info", map[string]any{
+		"ok":      true,
+		"channel": map[string]any{"id": "D111", "name": "dm-alice"},
+	})
+
+	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
+		Channel:     "D111",
+		User:        "U222",
+		Text:        "hello from allowed user",
+		ChannelType: slackevents.ChannelTypeIM,
+		TimeStamp:   "1610241741.000200",
+	}))
+
+	select {
+	case data := <-got:
+		require.Equal(t, "U222", data.Sender.ID, "only allowed user's message should arrive")
+	case <-time.After(3 * time.Second):
+		t.Fatal("timeout waiting for slack message event")
+	}
+
+	cancel()
+	require.NoError(t, <-done)
+}
+
 func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 	t.Parallel()
 

@@ -14,4 +14,7 @@ type Config struct {
 	// APIURL overrides the Slack API base URL. Leave empty to use the default.
 	APIURL   string                `yaml:"api_url" env:"SLACK_API_URL"`
 	EventLog islack.EventLogConfig `yaml:"event_log"`
+	// AllowUsers is a list of Slack user IDs permitted to interact with Hector.
+	// Empty means all users are allowed.
+	AllowUsers []string `yaml:"allow_users"`
 }

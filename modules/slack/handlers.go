@@ -14,6 +14,24 @@ import (
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
+type messageHandler func(ctx context.Context, e *slackevents.MessageEvent) error
+
+// allowUsers wraps a messageHandler and drops messages from users not in the allowlist.
+func allowUsers(ids []string, next messageHandler) messageHandler {
+	allowed := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		allowed[id] = struct{}{}
+	}
+	return func(ctx context.Context, e *slackevents.MessageEvent) error {
+		if _, ok := allowed[e.User]; !ok {
+			telem.Logger(ctx).InfoContext(ctx, "slack message dropped: user not in allowlist",
+				telem.String("user", e.User))
+			return nil
+		}
+		return next(ctx, e)
+	}
+}
+
 func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
 	m.log(ctx).DebugContext(ctx, "slack socket event", telem.String("type", string(evt.Type)))
 	switch evt.Type {
@@ -59,7 +77,7 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 
 	switch inner := apiEvent.InnerEvent.Data.(type) {
 	case *slackevents.MessageEvent:
-		if err := m.handleMessage(ctx, inner); err != nil {
+		if err := m.onMessage(ctx, inner); err != nil {
 			return err
 		}
 		return ackSocketEvent(ctx, client, evt)

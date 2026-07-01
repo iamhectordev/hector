@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/pkg/telem"
@@ -32,6 +33,7 @@ type Module struct {
 	client      *socketmode.Client
 	botUserID   string
 	eventLogger islack.EventLogger
+	onMessage   messageHandler
 }
 
 func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module, error) {
@@ -52,6 +54,11 @@ func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module,
 		botToken:    cfg.BotToken,
 		apiURL:      cfg.APIURL,
 		eventLogger: eventLogger,
+	}
+	m.onMessage = m.handleMessage
+	if len(cfg.AllowUsers) > 0 {
+		slog.Default().Info("slack allowlist active", "users", cfg.AllowUsers)
+		m.onMessage = allowUsers(cfg.AllowUsers, m.handleMessage)
 	}
 	for _, opt := range opts {
 		opt(m)
