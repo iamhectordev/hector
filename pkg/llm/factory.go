@@ -3,6 +3,7 @@ package llm
 import (
 	"fmt"
 
+	anthropicprovider "github.com/iamhectordev/hector/pkg/llm/providers/anthropic"
 	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
 	openaiprovider "github.com/iamhectordev/hector/pkg/llm/providers/openai"
 )
@@ -31,7 +32,7 @@ func New(cfg Config, opts ...Option) (Completer, error) {
 		opt(&o)
 	}
 
-	if err := validate.Var(string(o.provider), "oneof=echo openai"); err != nil {
+	if err := validate.Var(string(o.provider), "oneof=echo openai anthropic"); err != nil {
 		return nil, fmt.Errorf("llm: invalid provider %q", o.provider)
 	}
 
@@ -47,6 +48,11 @@ func New(cfg Config, opts ...Option) (Completer, error) {
 			cfg.OpenAI.Model,
 			openaiprovider.WithBodyLog(openaiprovider.BodyLogConfig(cfg.BodyLog)),
 		), nil
+	case ProviderAnthropic:
+		if cfg.Anthropic.APIKey == "" {
+			return nil, fmt.Errorf("llm: anthropic config: api_key required")
+		}
+		return anthropicprovider.New(cfg.Anthropic), nil
 	default:
 		return nil, fmt.Errorf("llm: invalid provider %q", o.provider)
 	}

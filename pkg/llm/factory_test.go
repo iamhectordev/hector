@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/iamhectordev/hector/pkg/llm"
+	anthropicprovider "github.com/iamhectordev/hector/pkg/llm/providers/anthropic"
 	"github.com/iamhectordev/hector/pkg/llm/providers/echo"
 	openaiprovider "github.com/iamhectordev/hector/pkg/llm/providers/openai"
 	"github.com/stretchr/testify/require"
@@ -46,6 +47,29 @@ func TestNew_OpenAIRequiresAPIKey(t *testing.T) {
 
 	completer, err := llm.New(llm.Config{
 		DefaultProvider: llm.ProviderOpenAI,
+	})
+	require.Error(t, err)
+	require.Nil(t, completer)
+}
+
+func TestNew_AnthropicReturnsProvider(t *testing.T) {
+	t.Parallel()
+
+	completer, err := llm.New(llm.Config{
+		DefaultProvider: llm.ProviderAnthropic,
+		Anthropic: anthropicprovider.Config{
+			APIKey: "sk-ant-test",
+		},
+	})
+	require.NoError(t, err)
+	require.IsType(t, &anthropicprovider.Completer{}, completer)
+}
+
+func TestNew_AnthropicRequiresAPIKey(t *testing.T) {
+	t.Parallel()
+
+	completer, err := llm.New(llm.Config{
+		DefaultProvider: llm.ProviderAnthropic,
 	})
 	require.Error(t, err)
 	require.Nil(t, completer)

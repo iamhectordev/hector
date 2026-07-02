@@ -2,6 +2,7 @@ package llm
 
 import (
 	"github.com/go-playground/validator/v10"
+	anthropicprovider "github.com/iamhectordev/hector/pkg/llm/providers/anthropic"
 	openaiprovider "github.com/iamhectordev/hector/pkg/llm/providers/openai"
 )
 
@@ -11,8 +12,9 @@ var validate = validator.New(validator.WithRequiredStructEnabled())
 type Provider string
 
 const (
-	ProviderEcho   Provider = "echo"
-	ProviderOpenAI Provider = "openai"
+	ProviderEcho      Provider = "echo"
+	ProviderOpenAI    Provider = "openai"
+	ProviderAnthropic Provider = "anthropic"
 )
 
 type BodyLogConfig struct {
@@ -21,7 +23,8 @@ type BodyLogConfig struct {
 }
 
 type Config struct {
-	DefaultProvider Provider              `yaml:"default_provider" env:"LLM_DEFAULT_PROVIDER" default:"echo" validate:"oneof=echo openai"`
-	BodyLog         BodyLogConfig         `yaml:"body_log"`
-	OpenAI          openaiprovider.Config `yaml:"openai"`
+	DefaultProvider Provider               `yaml:"default_provider" env:"LLM_DEFAULT_PROVIDER" default:"echo" validate:"oneof=echo openai anthropic"`
+	BodyLog         BodyLogConfig          `yaml:"body_log"`
+	OpenAI          openaiprovider.Config  `yaml:"openai"`
+	Anthropic       anthropicprovider.Config `yaml:"anthropic"`
 }
