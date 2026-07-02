@@ -135,9 +135,6 @@ func userBlocks(msg *schema.Message) []sdk.ContentBlockParamUnion {
 }
 
 func assistantBlocks(msg *schema.Message) ([]sdk.ContentBlockParamUnion, error) {
-	if len(msg.ToolCalls) == 0 {
-		return []sdk.ContentBlockParamUnion{sdk.NewTextBlock(msg.Content)}, nil
-	}
 	blocks := make([]sdk.ContentBlockParamUnion, 0, len(msg.ToolCalls)+1)
 	if msg.Content != "" {
 		blocks = append(blocks, sdk.NewTextBlock(msg.Content))
@@ -150,6 +147,9 @@ func assistantBlocks(msg *schema.Message) ([]sdk.ContentBlockParamUnion, error) 
 			input = map[string]any{}
 		}
 		blocks = append(blocks, sdk.NewToolUseBlock(call.ID, input, call.Name))
+	}
+	if len(blocks) == 0 {
+		return nil, fmt.Errorf("anthropic: assistant message has no content and no tool calls")
 	}
 	return blocks, nil
 }

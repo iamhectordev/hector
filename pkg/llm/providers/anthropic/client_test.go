@@ -143,6 +143,23 @@ func TestCompleter_Complete_PacksMultipleToolResultsIntoOneUserMessage(t *testin
 	require.Len(t, content, 2)
 }
 
+func TestCompleter_Complete_RejectsEmptyAssistantMessage(t *testing.T) {
+	t.Parallel()
+
+	var gotBody map[string]any
+	srv := newAnthropicTestServer(t, &gotBody, "ok")
+	c := newTestCompleter(t, srv.URL)
+
+	reply, err := c.Complete(t.Context(), schema.CompletionRequest{
+		Messages: []*schema.Message{
+			schema.UserMessage("hi"),
+			schema.AssistantMessage(""),
+		},
+	})
+	require.Error(t, err)
+	require.Nil(t, reply)
+}
+
 func TestCompleter_Complete_MapsToolCallsInResponse(t *testing.T) {
 	t.Parallel()
 
