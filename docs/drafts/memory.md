@@ -67,6 +67,29 @@ The entity model is based on [Portent](https://github.com/refactoringhq/portent)
 
 **Asset** — a Portent extension for things that exist, operate, and can be in good or bad states: software services, data pipelines, infrastructure components, external systems. Assets have owners (related to a Responsibility), dependencies (related to other Assets), and an operational lifecycle (active, degraded, decommissioned).
 
+**Type mapping for common org entities.**
+
+| Entity | Type | Rationale |
+|--------|------|-----------|
+| Running service (`auth-service`) | Asset | Has logs, envs, owners, operational lifecycle |
+| Code repository | Asset | Exists, has owners, history, is deployed |
+| External library (`react`, `grpc`) | Topic | Not owned or operated; collect knowledge *about* it |
+| External service used operationally (`datadog`) | Topic → Asset | Start as Topic; promote to Asset if org-specific operational facts accumulate |
+| Team or squad | Responsibility | The team is their accountability area; members are Persons related to it |
+| Recurring process (`incident response`, `oncall`) | Operation | Repeatable work with defined shape |
+| Business or workflow process | Operation | Same |
+
+**Topic as the safe catch-all.** When the extractor cannot confidently classify an entity — "Kafka" might be an Asset (we run it) or a Topic (we use a managed version) — it defaults to Topic. Topic makes no ownership or operational claims. It can be promoted to a more specific type later as context accumulates. This is the `captured` lifecycle state applied to entities: the reference is recorded, the characterization is deferred.
+
+**Entity classification heuristics.** The extractor uses the type taxonomy and the existing entity graph as context. Heuristics narrow the options before the LLM decides:
+- Ends in `-service`, `-api`, `-worker`, `-db`, `-pipeline` → likely Asset
+- "team", "squad", "guild", "group" → likely Responsibility
+- Recognizable person name → Person
+- External product or library name without deployment context → Topic
+- "process", "procedure", "rotation", "workflow" → Operation
+
+**The alias problem.** "auth-service", "auth service", "the auth microservice", "auth", "authentication service" may all refer to the same Asset. The extractor must resolve new mentions against the existing entity graph before creating a new object — fuzzy name matching plus LLM disambiguation. Creating duplicate entities for the same real-world thing produces a fragmented graph where knowledge about one alias is invisible when querying another. This is the most common failure mode in knowledge graph construction and must be addressed at ingestion time, not cleaned up later.
+
 **Relationships.** Two defaults from Portent, plus two for provenance:
 - `belongs_to` — primary context or ownership. A Note belongs to the Project it primarily supports. An Event belongs to the Responsibility it occurred under.
 - `related_to` — secondary association. A meeting Event is related to its attendees (Persons) and topics (Topics).
