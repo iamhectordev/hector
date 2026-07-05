@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/doron-cohen/klee/secrets"
 	sdkopenai "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,8 @@ func TestOpenAIEmbedder_Embed_CallsEndpointAndReturnsVector(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	e := newOpenAI(OpenAIConfig{APIKey: "sk-test", Model: "text-embedding-3-small"})
+	e, err := newOpenAI(OpenAIConfig{APIKey: secrets.Literal("sk-test"), Model: "text-embedding-3-small"})
+	require.NoError(t, err)
 	e.inner = sdkopenai.NewClient(
 		option.WithAPIKey("sk-test"),
 		option.WithBaseURL(srv.URL),
@@ -72,7 +74,8 @@ func TestOpenAIEmbedder_Embed_ErrorsOnEmptyResponse(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	e := newOpenAI(OpenAIConfig{APIKey: "sk-test", Model: "text-embedding-3-small"})
+	e, err := newOpenAI(OpenAIConfig{APIKey: secrets.Literal("sk-test"), Model: "text-embedding-3-small"})
+	require.NoError(t, err)
 	e.inner = sdkopenai.NewClient(
 		option.WithAPIKey("sk-test"),
 		option.WithBaseURL(srv.URL),
@@ -86,7 +89,8 @@ func TestOpenAIEmbedder_Embed_ErrorsOnEmptyResponse(t *testing.T) {
 func TestOpenAIEmbedder_Embed_DefaultsModel(t *testing.T) {
 	t.Parallel()
 
-	e := newOpenAI(OpenAIConfig{APIKey: "sk-test"})
+	e, err := newOpenAI(OpenAIConfig{APIKey: secrets.Literal("sk-test")})
+	require.NoError(t, err)
 	require.Equal(t, defaultModel, e.model)
 }
 

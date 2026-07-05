@@ -12,6 +12,7 @@ import (
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
+	emailmodule "github.com/iamhectordev/hector/modules/email"
 	memorymod "github.com/iamhectordev/hector/modules/memory"
 	"github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/modules/tools"
@@ -31,7 +32,7 @@ import (
 
 // Runtime wires and runs the long-running Hector application.
 type Runtime struct {
-	cfg     Config
+	cfg     *Config
 	profile Profile
 	logger  *slog.Logger
 
@@ -43,7 +44,10 @@ type Runtime struct {
 }
 
 // NewRuntime builds a Runtime from typed application config.
-func NewRuntime(cfg Config, opts ...Option) (*Runtime, error) {
+func NewRuntime(cfg *Config, opts ...Option) (*Runtime, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("app: config is required")
+	}
 	r := &Runtime{
 		cfg:     cfg,
 		profile: ProfileServe,
@@ -99,7 +103,7 @@ func (r *Runtime) init(ctx context.Context) error {
 		return err
 	}
 
-	completer, err := llm.New(r.cfg.LLM)
+	completer, err := llm.New(&r.cfg.LLM)
 	if err != nil {
 		return err
 	}
@@ -159,7 +163,7 @@ func (r *Runtime) initBus(ctx context.Context) error {
 func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, error) {
 	switch r.profile {
 	case ProfileServe:
-		slackModule, err := slack.NewModule(r.bus, r.cfg.Slack)
+		slackModule, err := slack.NewModule(r.bus, &r.cfg.Slack)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -236,6 +240,10 @@ func (r *Runtime) initModules(
 	if err != nil {
 		return nil, err
 	}
+	modules, err = r.appendEmailModule(modules)
+	if err != nil {
+		return nil, err
+	}
 	modules = append(modules,
 		agent.NewModule(r.bus, loop,
 			agent.WithConfig(r.cfg.Agent),
@@ -248,6 +256,17 @@ func (r *Runtime) initModules(
 	)
 	modules = append(modules, surfaces...)
 	return modules, nil
+}
+
+func (r *Runtime) appendEmailModule(modules []supervisor.Module) ([]supervisor.Module, error) {
+	if !r.cfg.Email.Enabled {
+		return modules, nil
+	}
+	emailModule, err := emailmodule.NewModule(r.cfg.Email, emailmodule.NewNoopMailbox())
+	if err != nil {
+		return nil, err
+	}
+	return append(modules, emailModule), nil
 }
 
 func (r *Runtime) initSupervisor(ctx context.Context, modules []supervisor.Module) error {

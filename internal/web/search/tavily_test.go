@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/doron-cohen/klee/secrets"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestConfigEnabled(t *testing.T) {
 
 	require.False(t, search.Config{}.Enabled())
 	require.True(t, search.Config{Provider: search.ProviderTavily}.Enabled())
-	require.False(t, search.Config{Tavily: search.TavilyConfig{APIKey: "test-key"}}.Enabled())
+	require.False(t, search.Config{Tavily: search.TavilyConfig{APIKey: secrets.Literal("test-key")}}.Enabled())
 	require.False(t, search.Config{Tavily: search.TavilyConfig{APIURL: "https://example.com"}}.Enabled())
 }
 
@@ -33,14 +34,14 @@ func TestNewTavilyValidatesConfig(t *testing.T) {
 	require.False(t, searchErr.Retryable())
 
 	_, err = search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: "not a url",
 	})
 	require.Error(t, err)
 	require.Equal(t, "tavily: configure: invalid_config", err.Error())
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: "https://api.tavily.com",
 	})
 	require.NoError(t, err)
@@ -60,7 +61,7 @@ func TestTavilyVerifyUsesBearerToken(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -80,7 +81,7 @@ func TestTavilyVerifyReportsUnauthorizedWithoutLeakingAPIKey(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -100,7 +101,7 @@ func TestTavilyVerifyReportsRateLimited(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -121,7 +122,7 @@ func TestTavilyVerifyReportsUnexpectedStatusWithoutBody(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -163,7 +164,7 @@ func TestTavilySearchReturnsNormalizedResults(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -196,7 +197,7 @@ func TestTavilySearchClassifiesUnauthorized(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -224,7 +225,7 @@ func TestTavilySearchClassifiesRateLimitAsRetryable(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -252,7 +253,7 @@ func TestTavilySearchClassifiesBadRequest(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -284,7 +285,7 @@ func TestTavilySearchClassifiesQuotaExceeded(t *testing.T) {
 			t.Cleanup(server.Close)
 
 			client, err := search.NewTavily(search.TavilyConfig{
-				APIKey: "test-key",
+				APIKey: secrets.Literal("test-key"),
 				APIURL: server.URL,
 			})
 			require.NoError(t, err)
@@ -314,7 +315,7 @@ func TestTavilySearchClassifiesServerErrorAsRetryable(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -338,7 +339,7 @@ func TestTavilySearchClassifiesNetworkErrorAsRetryable(t *testing.T) {
 	server.Close()
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)
@@ -365,7 +366,7 @@ func TestTavilySearchClassifiesMalformedResponse(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	client, err := search.NewTavily(search.TavilyConfig{
-		APIKey: "test-key",
+		APIKey: secrets.Literal("test-key"),
 		APIURL: server.URL,
 	})
 	require.NoError(t, err)

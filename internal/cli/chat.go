@@ -24,7 +24,7 @@ func chatAction(ctx context.Context, _ *cli.Command) error {
 	if err != nil {
 		return err
 	}
-	runtime, err := app.NewRuntime(*cfg, app.WithLogger(logger), app.WithProfile(app.ProfileChat))
+	runtime, err := app.NewRuntime(cfg, app.WithLogger(logger), app.WithProfile(app.ProfileChat))
 	if err != nil {
 		return err
 	}

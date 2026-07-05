@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/doron-cohen/klee/secrets"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -17,8 +18,8 @@ const defaultTavilyAPIURL = "https://api.tavily.com"
 var validate = validator.New(validator.WithRequiredStructEnabled())
 
 type TavilyConfig struct {
-	APIKey string `yaml:"api_key" env:"TAVILY_API_KEY" validate:"required"`
-	APIURL string `yaml:"api_url" env:"TAVILY_API_URL" validate:"omitempty,url"`
+	APIKey secrets.Secret `yaml:"api_key" env:"TAVILY_API_KEY" secret:"tavily_api_key"`
+	APIURL string         `yaml:"api_url" env:"TAVILY_API_URL" validate:"omitempty,url"`
 }
 
 type Tavily struct {
@@ -61,6 +62,15 @@ func NewTavily(cfg TavilyConfig, opts ...TavilyOption) (*Tavily, error) {
 			Cause:     err,
 		}
 	}
+	apiKey, err := cfg.APIKey.Value()
+	if err != nil {
+		return nil, &Error{
+			Provider:  ProviderTavily,
+			Operation: "configure",
+			Kind:      ErrorInvalidConfig,
+			Cause:     err,
+		}
+	}
 	apiURL, err := tavilyAPIURL(cfg.APIURL)
 	if err != nil {
 		return nil, &Error{
@@ -72,7 +82,7 @@ func NewTavily(cfg TavilyConfig, opts ...TavilyOption) (*Tavily, error) {
 	}
 	t := &Tavily{
 		apiURL:     apiURL,
-		apiKey:     cfg.APIKey,
+		apiKey:     apiKey,
 		httpClient: http.DefaultClient,
 	}
 	for _, opt := range opts {

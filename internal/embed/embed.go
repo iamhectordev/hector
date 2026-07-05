@@ -30,7 +30,7 @@ func New(cfg Config) (Embedder, error) {
 	case ProviderEcho:
 		return &EchoEmbedder{}, nil
 	case ProviderOpenAI, "":
-		return newOpenAI(cfg.OpenAI), nil
+		return newOpenAI(cfg.OpenAI)
 	default:
 		return nil, fmt.Errorf("embed: unknown provider %q", cfg.Provider)
 	}

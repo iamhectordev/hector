@@ -3,6 +3,7 @@ package app_test
 import (
 	"testing"
 
+	"github.com/doron-cohen/klee/secrets"
 	"github.com/iamhectordev/hector/internal/app"
 	"github.com/iamhectordev/hector/internal/email"
 	"github.com/iamhectordev/hector/internal/tracing"
@@ -17,7 +18,7 @@ func TestConfigComposesWebSearchConfig(t *testing.T) {
 		WebSearch: search.Config{
 			Provider: search.ProviderTavily,
 			Tavily: search.TavilyConfig{
-				APIKey: "test-key",
+				APIKey: secrets.Literal("test-key"),
 			},
 		},
 	}

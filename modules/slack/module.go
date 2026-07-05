@@ -36,13 +36,23 @@ type Module struct {
 	onMessage   messageHandler
 }
 
-func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module, error) {
+func NewModule(bus *waffle.EventBus, cfg *Config, opts ...ModuleOption) (*Module, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("slack: config is required")
+	}
 	if err := validate.Struct(cfg); err != nil {
 		return nil, fmt.Errorf("slack: invalid config: %w", err)
 	}
+	appToken, err := cfg.AppToken.Value()
+	if err != nil {
+		return nil, fmt.Errorf("slack: app_token: %w", err)
+	}
+	botToken, err := cfg.BotToken.Value()
+	if err != nil {
+		return nil, fmt.Errorf("slack: bot_token: %w", err)
+	}
 	eventLogger := islack.NewDiscardEventLogger()
 	if cfg.EventLog.Enabled {
-		var err error
 		eventLogger, err = islack.NewFileEventLogger(cfg.EventLog)
 		if err != nil {
 			return nil, err
@@ -50,8 +60,8 @@ func NewModule(bus *waffle.EventBus, cfg Config, opts ...ModuleOption) (*Module,
 	}
 	m := &Module{
 		bus:         bus,
-		appToken:    cfg.AppToken,
-		botToken:    cfg.BotToken,
+		appToken:    appToken,
+		botToken:    botToken,
 		apiURL:      cfg.APIURL,
 		eventLogger: eventLogger,
 	}

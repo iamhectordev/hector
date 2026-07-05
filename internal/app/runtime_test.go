@@ -13,7 +13,7 @@ import (
 func TestRuntimeStartsTracingBeforeAppInit(t *testing.T) {
 	t.Parallel()
 
-	runtime, err := app.NewRuntime(app.Config{
+	runtime, err := app.NewRuntime(&app.Config{
 		Tracing: tracing.Config{
 			Enabled:     true,
 			ServiceName: "hector",

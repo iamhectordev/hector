@@ -38,11 +38,7 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken: "xapp-fake-token",
-			BotToken: "xoxb-fake-token",
-			APIURL:   srv.BaseURL() + "/api/",
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -123,11 +119,7 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken: "xapp-fake-token",
-			BotToken: "xoxb-fake-token",
-			APIURL:   srv.BaseURL() + "/api/",
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -188,11 +180,7 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken: "xapp-fake-token",
-			BotToken: "xoxb-fake-token",
-			APIURL:   srv.BaseURL() + "/api/",
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -264,11 +252,7 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken: "xapp-fake-token",
-			BotToken: "xoxb-fake-token",
-			APIURL:   srv.BaseURL() + "/api/",
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -328,11 +312,7 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken: "xapp-fake-token",
-			BotToken: "xoxb-fake-token",
-			APIURL:   srv.BaseURL() + "/api/",
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -392,12 +372,7 @@ func TestModule_Start_AllowListPassesListedUser(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken:   "xapp-fake-token",
-			BotToken:   "xoxb-fake-token",
-			APIURL:     srv.BaseURL() + "/api/",
-			AllowUsers: []string{"U222"},
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", []string{"U222"}))
 		if err != nil {
 			done <- err
 			return
@@ -467,12 +442,7 @@ func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken:   "xapp-fake-token",
-			BotToken:   "xoxb-fake-token",
-			APIURL:     srv.BaseURL() + "/api/",
-			AllowUsers: []string{"U222"},
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", []string{"U222"}))
 		if err != nil {
 			done <- err
 			return
@@ -551,11 +521,7 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, module.Config{
-			AppToken: "xapp-fake-token",
-			BotToken: "xoxb-fake-token",
-			APIURL:   srv.BaseURL() + "/api/",
-		})
+		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -640,4 +606,15 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 
 	cancel()
 	require.NoError(t, <-done)
+}
+
+func testConfig(t *testing.T, apiURL string, allowUsers []string) *module.Config {
+	t.Helper()
+	cfg := &module.Config{
+		APIURL:     apiURL,
+		AllowUsers: allowUsers,
+	}
+	require.NoError(t, cfg.AppToken.UnmarshalText([]byte("xapp-fake-token")))
+	require.NoError(t, cfg.BotToken.UnmarshalText([]byte("xoxb-fake-token")))
+	return cfg
 }

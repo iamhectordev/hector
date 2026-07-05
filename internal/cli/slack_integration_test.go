@@ -39,11 +39,7 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, slackmodule.Config{
-		AppToken: "xapp-fake",
-		BotToken: "xoxb-fake",
-		APIURL:   srv.BaseURL() + "/api/",
-	})
+	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
 	replyRouter, err := comms.NewReplyRouter(slackMod.NewReplyHandler())
@@ -157,18 +153,14 @@ func TestSlack_DMMessage_TraceShape(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, slackmodule.Config{
-		AppToken: "xapp-fake",
-		BotToken: "xoxb-fake",
-		APIURL:   srv.BaseURL() + "/api/",
-	})
+	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
 	replyRouter, err := comms.NewReplyRouter(slackMod.NewReplyHandler())
 	require.NoError(t, err)
 	registry, err := tools.NewRegistry(replyRouter)
 	require.NoError(t, err)
-	completer, err := llm.New(llm.Config{DefaultProvider: llm.ProviderEcho})
+	completer, err := llm.New(&llm.Config{DefaultProvider: llm.ProviderEcho})
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
@@ -250,11 +242,7 @@ func TestSlack_DMMessage_ReactionFailureStillReachesAgent(t *testing.T) {
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, slackmodule.Config{
-		AppToken: "xapp-fake",
-		BotToken: "xoxb-fake",
-		APIURL:   srv.BaseURL() + "/api/",
-	})
+	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
 	completer := newCaptureCompleter()
@@ -636,11 +624,7 @@ func newSlackAgentCapture(t *testing.T, ctx context.Context) (*slackmock.Server,
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, slackmodule.Config{
-		AppToken: "xapp-fake",
-		BotToken: "xoxb-fake",
-		APIURL:   srv.BaseURL() + "/api/",
-	})
+	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
 	completer := newCaptureCompleter()
@@ -754,4 +738,12 @@ func requireNoSpanAttrValue(t *testing.T, spans []sdktrace.ReadOnlySpan, forbidd
 			require.NotEqual(t, forbidden, attr.Value.AsString(), "raw content leaked on span %q attr %q", span.Name(), attr.Key)
 		}
 	}
+}
+
+func testSlackConfig(t *testing.T, apiURL string) *slackmodule.Config {
+	t.Helper()
+	cfg := &slackmodule.Config{APIURL: apiURL}
+	require.NoError(t, cfg.AppToken.UnmarshalText([]byte("xapp-fake")))
+	require.NoError(t, cfg.BotToken.UnmarshalText([]byte("xoxb-fake")))
+	return cfg
 }

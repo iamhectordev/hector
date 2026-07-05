@@ -31,6 +31,7 @@ func TestRuntimeSupervisorOwnsTracingShutdownOnNormalStop(t *testing.T) {
 
 	started := make(chan struct{}, 1)
 	runtime := &Runtime{
+		cfg:     &Config{},
 		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 		tracing: tracingRuntime,
 		bus:     bus,
