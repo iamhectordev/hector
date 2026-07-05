@@ -2,6 +2,7 @@ package openai
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -189,6 +190,74 @@ func TestCompleter_Complete_RequiresChoice(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Nil(t, reply)
+}
+
+func TestCompleter_Complete_NormalizesOpenAIAPIError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		statusCode int
+		body       map[string]any
+		wantKind   schema.ErrorKind
+		wantRetry  bool
+	}{
+		{
+			name:       "rate limit retryable",
+			statusCode: http.StatusTooManyRequests,
+			body: map[string]any{"error": map[string]any{
+				"type":    "rate_limit_error",
+				"code":    "rate_limit_exceeded",
+				"message": "Rate limit reached.",
+			}},
+			wantKind:  schema.ErrorRateLimited,
+			wantRetry: true,
+		},
+		{
+			name:       "insufficient quota not retryable",
+			statusCode: http.StatusTooManyRequests,
+			body: map[string]any{"error": map[string]any{
+				"type":    "insufficient_quota",
+				"code":    "insufficient_quota",
+				"message": "You exceeded your current quota.",
+			}},
+			wantKind:  schema.ErrorQuotaExceeded,
+			wantRetry: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.statusCode)
+				require.NoError(t, json.NewEncoder(w).Encode(tt.body))
+			}))
+			t.Cleanup(srv.Close)
+
+			completer := New("sk-test", "")
+			completer.inner = sdkopenai.NewClient(
+				option.WithAPIKey("sk-test"),
+				option.WithBaseURL(srv.URL),
+			)
+
+			reply, err := completer.Complete(t.Context(), schema.CompletionRequest{
+				Messages: []*schema.Message{schema.UserMessage("hello")},
+			})
+			require.Error(t, err)
+			require.Nil(t, reply)
+
+			var llmErr *schema.Error
+			require.True(t, errors.As(err, &llmErr))
+			require.Equal(t, "openai", llmErr.Provider)
+			require.Equal(t, "complete", llmErr.Operation)
+			require.Equal(t, tt.wantKind, llmErr.Kind)
+			require.Equal(t, tt.statusCode, llmErr.StatusCode)
+			require.Equal(t, tt.wantRetry, llmErr.Retryable())
+		})
+	}
 }
 
 func TestCompleter_Complete_MapsToolsAndToolCalls(t *testing.T) {

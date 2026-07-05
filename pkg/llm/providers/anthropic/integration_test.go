@@ -15,10 +15,7 @@ func TestCompleter_Complete_LiveAPI(t *testing.T) {
 		t.Skip("ANTHROPIC_API_KEY not set")
 	}
 
-	c := anthropic.New(anthropic.Config{
-		APIKey: apiKey,
-		Model:  "claude-haiku-4-5-20251001", // cheapest model for integration test
-	})
+	c := anthropic.New(apiKey, "claude-haiku-4-5-20251001") // cheapest model for integration test
 
 	reply, err := c.Complete(t.Context(), schema.CompletionRequest{
 		Messages: []*schema.Message{

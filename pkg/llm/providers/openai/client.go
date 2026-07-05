@@ -93,7 +93,7 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 		ToolChoice: mapToolChoice(req.ToolChoice, toolNames),
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapError("complete", err)
 	}
 	if completion == nil {
 		return nil, fmt.Errorf("llm: nil completion")

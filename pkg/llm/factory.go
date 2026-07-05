@@ -23,7 +23,10 @@ func WithProvider(provider Provider) Option {
 }
 
 // New constructs a completer from typed config.
-func New(cfg Config, opts ...Option) (Completer, error) {
+func New(cfg *Config, opts ...Option) (Completer, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("llm: config is required")
+	}
 	o := options{provider: cfg.DefaultProvider}
 	if o.provider == "" {
 		o.provider = ProviderEcho
@@ -40,19 +43,24 @@ func New(cfg Config, opts ...Option) (Completer, error) {
 	case ProviderEcho:
 		return &echo.Completer{}, nil
 	case ProviderOpenAI:
-		if err := validate.Struct(cfg.OpenAI); err != nil {
+		if err := validate.Struct(&cfg.OpenAI); err != nil {
 			return nil, fmt.Errorf("llm: openai config: %w", err)
 		}
+		apiKey, err := cfg.OpenAI.APIKey.Value()
+		if err != nil {
+			return nil, fmt.Errorf("llm: openai config: api_key: %w", err)
+		}
 		return openaiprovider.New(
-			cfg.OpenAI.APIKey,
+			apiKey,
 			cfg.OpenAI.Model,
 			openaiprovider.WithBodyLog(openaiprovider.BodyLogConfig(cfg.BodyLog)),
 		), nil
 	case ProviderAnthropic:
-		if cfg.Anthropic.APIKey == "" {
-			return nil, fmt.Errorf("llm: anthropic config: api_key required")
+		apiKey, err := cfg.Anthropic.APIKey.Value()
+		if err != nil {
+			return nil, fmt.Errorf("llm: anthropic config: api_key: %w", err)
 		}
-		return anthropicprovider.New(cfg.Anthropic), nil
+		return anthropicprovider.New(apiKey, cfg.Anthropic.Model), nil
 	default:
 		return nil, fmt.Errorf("llm: invalid provider %q", o.provider)
 	}

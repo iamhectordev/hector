@@ -13,7 +13,7 @@ import (
 func TestNew_DefaultsToEcho(t *testing.T) {
 	t.Parallel()
 
-	completer, err := llm.New(llm.Config{})
+	completer, err := llm.New(&llm.Config{})
 	require.NoError(t, err)
 	require.IsType(t, &echo.Completer{}, completer)
 }
@@ -22,7 +22,7 @@ func TestNew_WithProviderOverridesDefault(t *testing.T) {
 	t.Parallel()
 
 	completer, err := llm.New(
-		llm.Config{},
+		&llm.Config{},
 		llm.WithProvider(llm.ProviderOpenAI),
 	)
 	require.Error(t, err)
@@ -32,12 +32,12 @@ func TestNew_WithProviderOverridesDefault(t *testing.T) {
 func TestNew_OpenAIReturnsProvider(t *testing.T) {
 	t.Parallel()
 
-	completer, err := llm.New(llm.Config{
+	cfg := &llm.Config{
 		DefaultProvider: llm.ProviderOpenAI,
-		OpenAI: openaiprovider.Config{
-			APIKey: "sk-test",
-		},
-	})
+		OpenAI:          openaiprovider.Config{},
+	}
+	require.NoError(t, cfg.OpenAI.APIKey.UnmarshalText([]byte("sk-test")))
+	completer, err := llm.New(cfg)
 	require.NoError(t, err)
 	require.IsType(t, &openaiprovider.Completer{}, completer)
 }
@@ -45,7 +45,7 @@ func TestNew_OpenAIReturnsProvider(t *testing.T) {
 func TestNew_OpenAIRequiresAPIKey(t *testing.T) {
 	t.Parallel()
 
-	completer, err := llm.New(llm.Config{
+	completer, err := llm.New(&llm.Config{
 		DefaultProvider: llm.ProviderOpenAI,
 	})
 	require.Error(t, err)
@@ -55,12 +55,12 @@ func TestNew_OpenAIRequiresAPIKey(t *testing.T) {
 func TestNew_AnthropicReturnsProvider(t *testing.T) {
 	t.Parallel()
 
-	completer, err := llm.New(llm.Config{
+	cfg := &llm.Config{
 		DefaultProvider: llm.ProviderAnthropic,
-		Anthropic: anthropicprovider.Config{
-			APIKey: "sk-ant-test",
-		},
-	})
+		Anthropic:       anthropicprovider.Config{},
+	}
+	require.NoError(t, cfg.Anthropic.APIKey.UnmarshalText([]byte("sk-ant-test")))
+	completer, err := llm.New(cfg)
 	require.NoError(t, err)
 	require.IsType(t, &anthropicprovider.Completer{}, completer)
 }
@@ -68,7 +68,7 @@ func TestNew_AnthropicReturnsProvider(t *testing.T) {
 func TestNew_AnthropicRequiresAPIKey(t *testing.T) {
 	t.Parallel()
 
-	completer, err := llm.New(llm.Config{
+	completer, err := llm.New(&llm.Config{
 		DefaultProvider: llm.ProviderAnthropic,
 	})
 	require.Error(t, err)
@@ -78,7 +78,7 @@ func TestNew_AnthropicRequiresAPIKey(t *testing.T) {
 func TestNew_RejectsUnknownProvider(t *testing.T) {
 	t.Parallel()
 
-	completer, err := llm.New(llm.Config{
+	completer, err := llm.New(&llm.Config{
 		DefaultProvider: llm.Provider("wat"),
 	})
 	require.Error(t, err)

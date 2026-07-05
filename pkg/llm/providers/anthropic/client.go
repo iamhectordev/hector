@@ -23,13 +23,13 @@ type Completer struct {
 	opts  []option.RequestOption
 }
 
-func New(cfg Config) *Completer {
-	model := strings.TrimSpace(cfg.Model)
+func New(apiKey, model string) *Completer {
+	model = strings.TrimSpace(model)
 	if model == "" {
 		model = defaultModel
 	}
 	c := &Completer{model: model}
-	c.inner = sdk.NewClient(append([]option.RequestOption{option.WithAPIKey(cfg.APIKey)}, c.opts...)...)
+	c.inner = sdk.NewClient(append([]option.RequestOption{option.WithAPIKey(apiKey)}, c.opts...)...)
 	return c
 }
 
@@ -69,7 +69,7 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 
 	msg, err := c.inner.Messages.New(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, mapError("complete", err)
 	}
 	if msg == nil {
 		return nil, fmt.Errorf("anthropic: nil response")
