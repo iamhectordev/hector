@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: lint test build
+    runs-on: ubuntu-24.04
+    env:
+      MISE_VERSION: v2026.5.1
+      MISE_LINUX_X64_TAR_SHA256: 6fce8bb60f8497e7bf2ed802cfd9e1e7384643be4434bf5be929b508fe603ccb
+      MISE_DATA_DIR: ${{ github.workspace }}/.mise
+      MISE_CACHE_DIR: ${{ github.workspace }}/.mise/cache
+      MISE_CONFIG_DIR: ${{ github.workspace }}/.mise/config
+      MISE_STATE_DIR: ${{ github.workspace }}/.mise/state
+    steps:
+      - name: Check out repository
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          git init .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" \
+              fetch --depth=1 origin "refs/pull/${PR_NUMBER}/merge"
+          else
+            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" \
+              fetch --depth=1 origin "${GITHUB_SHA}"
+          fi
+
+          git checkout --detach FETCH_HEAD
+
+      - name: Install mise
+        run: |
+          set -euo pipefail
+
+          mkdir -p .ci/bin .ci/mise
+          curl --fail --location --show-error --silent \
+            "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64.tar.gz" \
+            --output .ci/mise.tar.gz
+          echo "${MISE_LINUX_X64_TAR_SHA256}  .ci/mise.tar.gz" | sha256sum --check -
+          tar -xzf .ci/mise.tar.gz -C .ci/mise --strip-components=2 mise/bin/mise
+          mv .ci/mise/mise .ci/bin/mise
+          chmod +x .ci/bin/mise
+          echo "${GITHUB_WORKSPACE}/.ci/bin" >> "${GITHUB_PATH}"
+
+      - name: Install tools
+        run: mise install
+
+      - name: Lint
+        run: mise run lint
+
+      - name: Test
+        run: mise run test
+
+      - name: Build
+        run: mise run build
