@@ -103,7 +103,7 @@ func (r *Runtime) init(ctx context.Context) error {
 		return err
 	}
 
-	completer, err := llm.New(&r.cfg.LLM)
+	completer, err := llm.New(ctx, &r.cfg.LLM)
 	if err != nil {
 		return err
 	}

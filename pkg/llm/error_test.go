@@ -12,7 +12,7 @@ func TestIsRetryable(t *testing.T) {
 	t.Parallel()
 
 	err := &llm.Error{
-		Provider: string(llm.ProviderOpenAI),
+		Provider: string(llm.BackendOpenAI),
 		Kind:     llm.ErrorRateLimited,
 		Retry:    true,
 	}

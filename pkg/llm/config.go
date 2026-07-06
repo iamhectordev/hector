@@ -4,17 +4,20 @@ import (
 	"github.com/go-playground/validator/v10"
 	anthropicprovider "github.com/iamhectordev/hector/pkg/llm/providers/anthropic"
 	openaiprovider "github.com/iamhectordev/hector/pkg/llm/providers/openai"
+	vertexprovider "github.com/iamhectordev/hector/pkg/llm/providers/vertex"
 )
 
 var validate = validator.New(validator.WithRequiredStructEnabled())
 
-// Provider selects which completer implementation to construct.
-type Provider string
+// Backend selects the deployment platform (Anthropic direct, OpenAI, Vertex, etc.)
+// and determines both the SDK client and the authentication method.
+type Backend string
 
 const (
-	ProviderEcho      Provider = "echo"
-	ProviderOpenAI    Provider = "openai"
-	ProviderAnthropic Provider = "anthropic"
+	BackendEcho      Backend = "echo"
+	BackendOpenAI    Backend = "openai"
+	BackendAnthropic Backend = "anthropic"
+	BackendVertex    Backend = "vertex"
 )
 
 type BodyLogConfig struct {
@@ -23,8 +26,9 @@ type BodyLogConfig struct {
 }
 
 type Config struct {
-	DefaultProvider Provider               `yaml:"default_provider" env:"LLM_DEFAULT_PROVIDER" default:"echo" validate:"oneof=echo openai anthropic"`
-	BodyLog         BodyLogConfig          `yaml:"body_log"`
-	OpenAI          openaiprovider.Config  `yaml:"openai"`
-	Anthropic       anthropicprovider.Config `yaml:"anthropic"`
+	DefaultBackend Backend                  `yaml:"default_backend" env:"LLM_DEFAULT_BACKEND" default:"echo" validate:"oneof=echo openai anthropic vertex"`
+	BodyLog        BodyLogConfig            `yaml:"body_log"`
+	OpenAI         openaiprovider.Config    `yaml:"openai"`
+	Anthropic      anthropicprovider.Config `yaml:"anthropic"`
+	Vertex         vertexprovider.Config    `yaml:"vertex"`
 }

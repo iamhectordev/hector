@@ -33,6 +33,19 @@ func New(apiKey, model string) *Completer {
 	return c
 }
 
+// NewWithOptions constructs a Completer using the provided SDK request options.
+// Use this when the caller manages authentication (e.g. Vertex AI via vertex.WithGoogleAuth).
+func NewWithOptions(model string, opts ...option.RequestOption) *Completer {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		model = defaultModel
+	}
+	return &Completer{
+		model: model,
+		inner: sdk.NewClient(opts...),
+	}
+}
+
 // WithClientOption appends a request option to the underlying SDK client.
 // Intended for tests that need to redirect requests to a local server.
 func (c *Completer) WithClientOption(opt option.RequestOption) {

@@ -160,7 +160,7 @@ func TestSlack_DMMessage_TraceShape(t *testing.T) {
 	require.NoError(t, err)
 	registry, err := tools.NewRegistry(replyRouter)
 	require.NoError(t, err)
-	completer, err := llm.New(&llm.Config{DefaultProvider: llm.ProviderEcho})
+	completer, err := llm.New(t.Context(), &llm.Config{DefaultBackend: llm.BackendEcho})
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
