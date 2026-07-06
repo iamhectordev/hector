@@ -6,7 +6,7 @@ require (
 	codeberg.org/readeck/go-readability v0.0.0-20251125211941-0f57a445e5f1
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.1
 	github.com/anthropics/anthropic-sdk-go v1.56.0
-	github.com/doron-cohen/klee v0.0.0
+	github.com/doron-cohen/klee v0.0.0-20260706092029-1d70ebd89b49
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/google/jsonschema-go v0.4.3
 	github.com/google/uuid v1.6.0
@@ -79,5 +79,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/doron-cohen/klee => ../klee
