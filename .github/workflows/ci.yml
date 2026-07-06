@@ -30,14 +30,16 @@ jobs:
         run: |
           set -euo pipefail
 
-          git init .
+          auth_header="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+
+          git init --initial-branch=main .
           git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
 
           if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
-            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" \
+            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" \
               fetch --depth=1 origin "refs/pull/${PR_NUMBER}/merge"
           else
-            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: bearer ${GITHUB_TOKEN}" \
+            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" \
               fetch --depth=1 origin "${GITHUB_SHA}"
           fi
 
