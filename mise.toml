@@ -10,7 +10,7 @@ run = "go build -o bin/hector ./cmd/hector"
 run = "go test -race ./..."
 
 [tasks.lint]
-run = ["golangci-lint run ./...", "nilaway ./..."]
+run = ["golangci-lint run ./...", "nilaway -exclude-errors-in-files=$(go env GOROOT) ./..."]
 
 [tasks.run]
 run = "go run ./cmd/hector -- {{args()}}"
