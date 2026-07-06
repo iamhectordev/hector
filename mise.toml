@@ -1,5 +1,5 @@
 [tools]
-go = "1.26"
+go = "1.26.2"
 "go:github.com/golangci/golangci-lint/v2/cmd/golangci-lint" = "v2.12.2"
 "go:go.uber.org/nilaway/cmd/nilaway" = "v0.0.0-20260318203545-ad240b12fb4c"
 
