@@ -1,0 +1,172 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: validate tag release
+    runs-on: ubuntu-24.04
+    env:
+      MISE_VERSION: v2026.5.1
+      MISE_LINUX_X64_TAR_SHA256: 6fce8bb60f8497e7bf2ed802cfd9e1e7384643be4434bf5be929b508fe603ccb
+      GIT_CLIFF_VERSION: 2.13.1
+      GIT_CLIFF_LINUX_X64_TAR_SHA256: 9a1263f24e59a2f508c7b3d3283c9dea94a8bf697f96dbc18cc783cac6284546
+      MISE_DATA_DIR: ${{ github.workspace }}/.mise
+      MISE_CACHE_DIR: ${{ github.workspace }}/.mise/cache
+      MISE_CONFIG_DIR: ${{ github.workspace }}/.mise/config
+      MISE_STATE_DIR: ${{ github.workspace }}/.mise/state
+    steps:
+      - name: Check out repository
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          auth_header="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+
+          git init --initial-branch=main .
+          git remote add origin "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+            fetch --tags --prune origin "+refs/heads/main:refs/remotes/origin/main"
+          git checkout --detach "${GITHUB_SHA}"
+
+      - name: Install mise
+        run: |
+          set -euo pipefail
+
+          mkdir -p .ci/bin .ci/mise
+          curl --fail --location --show-error --silent \
+            "https://github.com/jdx/mise/releases/download/${MISE_VERSION}/mise-${MISE_VERSION}-linux-x64.tar.gz" \
+            --output .ci/mise.tar.gz
+          echo "${MISE_LINUX_X64_TAR_SHA256}  .ci/mise.tar.gz" | sha256sum --check -
+          tar -xzf .ci/mise.tar.gz -C .ci/mise --strip-components=2 mise/bin/mise
+          mv .ci/mise/mise .ci/bin/mise
+          chmod +x .ci/bin/mise
+          echo "${GITHUB_WORKSPACE}/.ci/bin" >> "${GITHUB_PATH}"
+
+      - name: Install git-cliff
+        run: |
+          set -euo pipefail
+
+          mkdir -p .ci/git-cliff
+          curl --fail --location --show-error --silent \
+            "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
+            --output .ci/git-cliff.tar.gz
+          echo "${GIT_CLIFF_LINUX_X64_TAR_SHA256}  .ci/git-cliff.tar.gz" | sha256sum --check -
+          tar -xzf .ci/git-cliff.tar.gz -C .ci/git-cliff --strip-components=1 "git-cliff-${GIT_CLIFF_VERSION}/git-cliff"
+          mv .ci/git-cliff/git-cliff .ci/bin/git-cliff
+          chmod +x .ci/bin/git-cliff
+
+      - name: Install tools
+        run: mise install
+
+      - name: Lint
+        run: mise run lint
+
+      - name: Test
+        run: mise run test
+
+      - name: Build
+        run: mise run build
+
+      - name: Select version
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          existing_tag="$(git tag --points-at HEAD --list 'v[0-9]*' | sort -V | tail -n1)"
+          if [ -n "${existing_tag}" ]; then
+            version="${existing_tag}"
+            tag_exists=true
+          else
+            version="$(scripts/release/next-version.sh)"
+            tag_exists=false
+          fi
+
+          release_status="$(
+            curl --location --silent --output /dev/null --write-out '%{http_code}' \
+              --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases/tags/${version}"
+          )"
+
+          if [ "${release_status}" = "200" ]; then
+            release_exists=true
+          elif [ "${release_status}" = "404" ]; then
+            release_exists=false
+          else
+            echo "release: failed to check existing release for ${version}: HTTP ${release_status}" >&2
+            exit 1
+          fi
+
+          {
+            echo "version=${version}"
+            echo "tag_exists=${tag_exists}"
+            echo "release_exists=${release_exists}"
+          } >> "${GITHUB_OUTPUT}"
+
+          echo "version=${version} tag_exists=${tag_exists} release_exists=${release_exists}"
+
+      - name: Generate release notes
+        if: steps.version.outputs.release_exists == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          git-cliff --config cliff.toml --unreleased --tag "${VERSION}" --strip header --output release-notes.md
+          if [ ! -s release-notes.md ]; then
+            printf 'Release %s\n' "${VERSION}" > release-notes.md
+          fi
+
+      - name: Push tag
+        if: steps.version.outputs.tag_exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          auth_header="$(printf 'x-access-token:%s' "${GITHUB_TOKEN}" | base64 -w0)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION}" -m "${VERSION}"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+            push origin "refs/tags/${VERSION}"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.release_exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          jq -n \
+            --arg tag "${VERSION}" \
+            --arg name "${VERSION}" \
+            --rawfile body release-notes.md \
+            '{tag_name: $tag, name: $name, body: $body, draft: false, prerelease: false}' \
+            > release.json
+
+          curl --fail --location --show-error --silent \
+            --request POST \
+            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --data @release.json \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/releases"
