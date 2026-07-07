@@ -16,7 +16,7 @@ func main() {
 	ctx, stopSignals := supervisor.NotifyContext(context.Background())
 	defer stopSignals()
 
-	app := klee.New[appconfig.Config]("hector", "dev", cli.Commands()).
+	app := klee.New[appconfig.Config]("hector", cli.Commands()).WithVersion("dev").
 		WithSecretStore(secrets.NewKeychain("hector"))
 	if err := app.LoadConfig(klee.ConfigOptions[appconfig.Config]{FlagArgs: os.Args, DotEnvFiles: []string{".env"}}); err != nil {
 		fmt.Fprintln(os.Stderr, err)

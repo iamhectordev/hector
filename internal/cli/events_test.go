@@ -116,7 +116,7 @@ func runCLI(t *testing.T, args ...string) *kleetest.Result {
 	t.Setenv("SLACK_APP_TOKEN", "test")
 	t.Setenv("SLACK_BOT_TOKEN", "test")
 
-	app := klee.New[appconfig.Config]("hector", "test", cli.Commands())
+	app := klee.New[appconfig.Config]("hector", cli.Commands()).WithVersion("test")
 	require.NoError(t, app.LoadConfig(klee.ConfigOptions[appconfig.Config]{
 		FlagArgs: append([]string{"hector"}, args...),
 	}))

@@ -39,7 +39,7 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	t.Setenv("TAVILY_API_URL", "https://example.com")
 
 	// 3. Init klee app
-	app := klee.New[appconfig.Config]("hector", "test", cli.Commands())
+	app := klee.New[appconfig.Config]("hector", cli.Commands()).WithVersion("test")
 	require.NoError(t, app.LoadConfig(klee.ConfigOptions[appconfig.Config]{
 		FlagArgs: []string{"hector", "serve"},
 	}))
