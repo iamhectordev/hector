@@ -79,6 +79,9 @@ func (c *Completer) Complete(ctx context.Context, req schema.CompletionRequest) 
 	if req.System != "" {
 		params.System = []sdk.TextBlockParam{{Text: req.System}}
 	}
+	if req.ToolChoice != nil {
+		params.ToolChoice = sdk.ToolChoiceParamOfTool(req.ToolChoice.Name)
+	}
 
 	msg, err := c.inner.Messages.New(ctx, params)
 	if err != nil {

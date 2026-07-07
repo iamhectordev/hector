@@ -250,6 +250,45 @@ func TestCompleter_Complete_NormalizesAnthropicAPIError(t *testing.T) {
 	}
 }
 
+func TestCompleter_Complete_MapsToolChoice(t *testing.T) {
+	t.Parallel()
+
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&gotBody))
+		w.Header().Set("Content-Type", "application/json")
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{
+			"id":   "msg_123",
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]any{{
+				"type":  "tool_use",
+				"id":    "c1",
+				"name":  "produce_result",
+				"input": json.RawMessage(`{"content":"x"}`),
+			}},
+			"stop_reason": "tool_use",
+			"usage":       map[string]any{"input_tokens": 10, "output_tokens": 5},
+		}))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestCompleter(t, srv.URL)
+	_, err := c.Complete(t.Context(), schema.CompletionRequest{
+		Messages: []*schema.Message{schema.UserMessage("extract")},
+		Tools: []schema.ToolDefinition{{
+			Name:       "produce_result",
+			Parameters: json.RawMessage(`{"type":"object","properties":{}}`),
+		}},
+		ToolChoice: &schema.ToolChoice{Name: "produce_result"},
+	})
+	require.NoError(t, err)
+
+	tc := gotBody["tool_choice"].(map[string]any)
+	require.Equal(t, "tool", tc["type"])
+	require.Equal(t, "produce_result", tc["name"])
+}
+
 // helpers
 
 func newTestCompleter(t *testing.T, baseURL string) *anthropic.Completer {
