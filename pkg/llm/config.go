@@ -26,7 +26,7 @@ type BodyLogConfig struct {
 }
 
 type Config struct {
-	DefaultBackend Backend                  `yaml:"default_backend" env:"LLM_DEFAULT_BACKEND" default:"echo" validate:"oneof=echo openai anthropic vertex"`
+	DefaultBackend Backend                  `yaml:"default_backend" env:"LLM_DEFAULT_BACKEND" validate:"oneof=echo openai anthropic vertex"`
 	BodyLog        BodyLogConfig            `yaml:"body_log"`
 	OpenAI         openaiprovider.Config    `yaml:"openai"`
 	Anthropic      anthropicprovider.Config `yaml:"anthropic"`

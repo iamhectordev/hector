@@ -33,9 +33,6 @@ func New(ctx context.Context, cfg *Config, opts ...Option) (Completer, error) {
 		return nil, fmt.Errorf("llm: config is required")
 	}
 	o := options{backend: cfg.DefaultBackend}
-	if o.backend == "" {
-		o.backend = BackendEcho
-	}
 	for _, opt := range opts {
 		opt(&o)
 	}

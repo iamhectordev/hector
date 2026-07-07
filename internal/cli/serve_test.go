@@ -24,7 +24,7 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	// 2. Configure Environment variables mimicking the executable
 	dbPath := filepath.Join(t.TempDir(), "integration.db")
 	t.Setenv("HECTOR_DB_PATH", dbPath)
-	t.Setenv("HECTOR_LLM_DEFAULT_PROVIDER", "echo")
+	t.Setenv("LLM_DEFAULT_BACKEND", "echo")
 	t.Setenv("HECTOR_LOG_LEVEL", "debug")
 	t.Setenv("HECTOR_SLACK_API_URL", srv.BaseURL()+"/api/")
 	t.Setenv("HECTOR_SLACK_APP_TOKEN", "xapp-fake")

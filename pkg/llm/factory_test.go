@@ -13,10 +13,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNew_DefaultsToEcho(t *testing.T) {
+func TestNew_FailsWhenBackendNotSet(t *testing.T) {
 	t.Parallel()
 
 	completer, err := llm.New(t.Context(), &llm.Config{})
+	require.Error(t, err)
+	require.Nil(t, completer)
+}
+
+func TestNew_EchoWhenExplicitlyConfigured(t *testing.T) {
+	t.Parallel()
+
+	completer, err := llm.New(t.Context(), &llm.Config{DefaultBackend: llm.BackendEcho})
 	require.NoError(t, err)
 	require.IsType(t, &echo.Completer{}, completer)
 }
