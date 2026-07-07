@@ -165,7 +165,9 @@ func assistantBlocks(msg *schema.Message) ([]sdk.ContentBlockParamUnion, error) 
 		blocks = append(blocks, sdk.NewToolUseBlock(call.ID, input, call.Name))
 	}
 	if len(blocks) == 0 {
-		return nil, fmt.Errorf("anthropic: assistant message has no content and no tool calls")
+		// Empty assistant message in history (e.g. echo completer stop-after-tool-result
+		// artifact). Use a space so the conversation structure stays valid for the API.
+		return []sdk.ContentBlockParamUnion{sdk.NewTextBlock(" ")}, nil
 	}
 	return blocks, nil
 }

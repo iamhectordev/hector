@@ -85,7 +85,9 @@ func (l *Loop) Run(ctx context.Context, agentCtx Context, system string, message
 		telem.Event(completeCtx, "llm.completed", telem.String("llm.finish_reason", string(reply.FinishReason)))
 		completeSpan.End(&err)
 		exchange := append([]*schema.Message{}, messages[newMessagesStart:]...)
-		exchange = append(exchange, reply)
+		if reply.Content != "" || len(reply.ToolCalls) > 0 {
+			exchange = append(exchange, reply)
+		}
 		l.record(ctx, agentCtx, exchange)
 
 		switch reply.FinishReason {

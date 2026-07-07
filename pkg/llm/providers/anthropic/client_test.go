@@ -144,21 +144,32 @@ func TestCompleter_Complete_PacksMultipleToolResultsIntoOneUserMessage(t *testin
 	require.Len(t, content, 2)
 }
 
-func TestCompleter_Complete_RejectsEmptyAssistantMessage(t *testing.T) {
+func TestCompleter_Complete_HandlesEmptyAssistantMessageInHistory(t *testing.T) {
 	t.Parallel()
 
 	var gotBody map[string]any
 	srv := newAnthropicTestServer(t, &gotBody, "ok")
 	c := newTestCompleter(t, srv.URL)
 
+	// Empty assistant messages can appear in history from the echo completer.
+	// They must be tolerated rather than hard-errored so sessions remain usable.
 	reply, err := c.Complete(t.Context(), schema.CompletionRequest{
 		Messages: []*schema.Message{
 			schema.UserMessage("hi"),
 			schema.AssistantMessage(""),
+			schema.UserMessage("what?"),
 		},
 	})
-	require.Error(t, err)
-	require.Nil(t, reply)
+	require.NoError(t, err)
+	require.NotNil(t, reply)
+
+	// Empty assistant message should be sent as a single-space text block.
+	msgs := gotBody["messages"].([]any)
+	assistantMsg := msgs[1].(map[string]any)
+	require.Equal(t, "assistant", assistantMsg["role"])
+	blocks := assistantMsg["content"].([]any)
+	require.Len(t, blocks, 1)
+	require.Equal(t, " ", blocks[0].(map[string]any)["text"])
 }
 
 func TestCompleter_Complete_MapsToolCallsInResponse(t *testing.T) {
