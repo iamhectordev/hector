@@ -35,8 +35,8 @@ type Error struct {
 
 func (e *Error) Error() string {
 	msg := e.Provider + ": " + e.Operation + ": " + string(e.Kind)
-	if e.Retry {
-		msg += ": retryable"
+	if e.Cause != nil {
+		msg += ": " + e.Cause.Error()
 	}
 	return msg
 }
