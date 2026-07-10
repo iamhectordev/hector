@@ -21,17 +21,6 @@ func newSpanRecorder(t *testing.T) *tracetest.SpanRecorder {
 	return recorder
 }
 
-func requireSpanAttr(t *testing.T, span sdktrace.ReadOnlySpan, key string) string {
-	t.Helper()
-	for _, attr := range span.Attributes() {
-		if string(attr.Key) == key {
-			return attr.Value.AsString()
-		}
-	}
-	t.Fatalf("missing attr %q on span %q", key, span.Name())
-	return ""
-}
-
 func requireSpanAttrInt(t *testing.T, span sdktrace.ReadOnlySpan, key string) int64 {
 	t.Helper()
 	for _, attr := range span.Attributes() {
