@@ -15,8 +15,8 @@ import (
 	"testing"
 
 	gh "github.com/iamhectordev/hector/internal/github"
-	"github.com/iamhectordev/hector/modules/tools"
 	githubtools "github.com/iamhectordev/hector/modules/tools/github"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +37,7 @@ func TestRegisterAddsToolsToRegistry(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	registry, err := tools.NewRegistry()
+	registry, err := pkgtools.NewRegistry()
 	require.NoError(t, err)
 	executable, err := os.Executable()
 	require.NoError(t, err)
@@ -59,6 +59,8 @@ func TestRegisterAddsToolsToRegistry(t *testing.T) {
 	t.Cleanup(func() {
 		require.NoError(t, closer.Close())
 	})
+
+
 
 	defs := registry.Definitions()
 	names := make([]string, 0, len(defs))

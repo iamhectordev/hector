@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/iamhectordev/hector/internal/mcp"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
@@ -52,8 +53,8 @@ func NewMCPTool(prefix string, client mcpClient, tool mcp.Tool) (*MCPTool, error
 	}, nil
 }
 
-func (t *MCPTool) Definition() Definition {
-	return Definition{
+func (t *MCPTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
 		Name:        t.name,
 		Description: t.description,
 		Parameters:  t.parameters,
@@ -74,10 +75,10 @@ func (t *MCPTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 	result, err := t.client.CallTool(ctx, t.mcpName, args)
 	if err != nil {
 		err = fmt.Errorf("mcp call: %w", err)
-		return Fail(err.Error())
+		return pkgtools.Fail(err.Error())
 	}
 	span.AddFields(mcpFields(t.server, t.mcpName, result)...)
-	return OK(result)
+	return pkgtools.OK(result)
 }
 
 func normalizeMCPToolName(prefix, name string) string {

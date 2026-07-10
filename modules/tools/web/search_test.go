@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	internalsearch "github.com/iamhectordev/hector/internal/web/search"
-	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/modules/tools/web"
+	"github.com/iamhectordev/hector/pkg/tools"
 )
 
 type fakeSearcher struct {
