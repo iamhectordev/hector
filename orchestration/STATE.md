@@ -7,9 +7,9 @@ Session IDs live in `.worktrees/logs/<issue>.ndjson` (`orch.sh session <issue>`)
 | Issue | Spec | Depends | Status | Notes |
 |---|---|---|---|---|
 | int1-01 | docs/specs/int1/01-tools-to-pkg.md | — | integrated | gate pass attempt 1; pure renames, reviewed diff |
-| int1-02 | docs/specs/int1/02-integration-contracts.md | int1-01 | running | contracts + host + integration.md golden-path rewrite |
-| int1-03 | docs/specs/int1/03-github-integration.md | int1-02 | todo | includes internal/mcp → pkg/mcp move |
-| int1-04 | docs/specs/int1/04-slack-integration.md | int1-02 | todo | breaking config: slack.enabled now required for serve |
+| int1-02 | docs/specs/int1/02-integration-contracts.md | int1-01 | integrated | gate pass attempt 1; contracts match design 1:1 |
+| int1-03 | docs/specs/int1/03-github-integration.md | int1-02 | running | includes internal/mcp → pkg/mcp move |
+| int1-04 | docs/specs/int1/04-slack-integration.md | int1-02 | running | breaking config: slack.enabled now required for serve |
 | int1-05 | docs/specs/int1/05-architecture-docs.md | int1-03, int1-04 | todo | docs only |
 
 int1-03 and int1-04 can run in parallel once int1-02 is integrated (04's spec
