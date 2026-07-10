@@ -19,7 +19,7 @@ cmd/
 internal/
   app/                  ← runtime wiring: builds []Module from config, wires deps
   cli/                  ← urfave/cli v3 app and commands (chat, serve, events)
-  db/                   ← connection + migration runner
+  db/                   ← SQLite connection + migration runner
   tracing/              ← otel setup
   email/                ← shared email infrastructure
   web/                  ← HTTP helpers
@@ -27,26 +27,26 @@ internal/
   ulid/                 ← ID generation
 modules/
   agent/                ← supervisor.Module: LLM loop, message handling
-  tools/                ← supervisor.Module: tool registry, bus consumer, MCP adapter
+  tools/                ← supervisor.Module: tool execution via bus consumer, mem_recall
   memory/               ← supervisor.Module: conversation memory
   email/                ← supervisor.Module: email sending
   tui/                  ← supervisor.Module: terminal UI
 pkg/
-  tools/                ← tool contract: Tool, Definition, Registry, SchemaFor, typed helper
+  tools/                ← tool contract: Tool, Definition, Registry, SchemaFor, typed helper, MCPTool
   supervisor/           ← Module interface, lifecycle manager
-  comms/                ← communication types: Message, ReplyHandler, ReplyRouter
+  comms/                ← reply routing: ReplyHandler, ReplyRouter
   llm/                  ← LLM client abstraction
   waffle/               ← event bus and workflow primitives
   telem/                ← telemetry and tracing helpers
   session/              ← session types
   memory/               ← memory store contract
-  mcp/                  ← MCP (Model Context Protocol) adapter
+  mcp/                  ← MCP client: wraps the official MCP SDK
   migrations/           ← database migration files
   safehttp/             ← safe HTTP utilities
 integrations/
   integration.go        ← facet contracts: Integration, ToolProvider, EventSource, Surface, Initializer
   host.go               ← generic Host adapter: turns any Integration into a supervisor.Module
-  github/               ← GitHub integration (tool provider, event source)
+  github/               ← GitHub integration (tool provider)
   slack/                ← Slack integration (event source, surface)
 ```
 
