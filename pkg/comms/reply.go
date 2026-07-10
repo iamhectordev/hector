@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/session"
+	"github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
