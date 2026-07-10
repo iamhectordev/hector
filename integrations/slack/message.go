@@ -10,6 +10,7 @@ import (
 	"github.com/slack-go/slack/slackevents"
 )
 
+// ParseReceivedEvent converts a Slack message event into MessageReceivedData.
 func ParseReceivedEvent(now time.Time, e *slackevents.MessageEvent) (MessageReceivedData, bool, error) {
 	if e == nil {
 		return MessageReceivedData{}, false, fmt.Errorf("slack: message event cannot be nil")
@@ -37,6 +38,7 @@ func ParseReceivedEvent(now time.Time, e *slackevents.MessageEvent) (MessageRece
 	return data, true, nil
 }
 
+// ParseChangedEvent converts a message_changed event into MessageReceivedData.
 func ParseChangedEvent(now time.Time, e *slackevents.MessageEvent) (MessageReceivedData, bool, error) {
 	if e == nil {
 		return MessageReceivedData{}, false, fmt.Errorf("slack: message event cannot be nil")

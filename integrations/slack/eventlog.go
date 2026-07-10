@@ -23,11 +23,13 @@ func expandPath(path string) string {
 	return path
 }
 
+// EventLogger logs raw Slack socket mode events for debugging.
 type EventLogger interface {
 	Log(ctx context.Context, evt socketmode.Event) error
 	Close() error
 }
 
+// EventLogConfig configures the file-based event logger.
 type EventLogConfig struct {
 	Enabled bool   `yaml:"enabled" env:"SLACK_EVENT_LOG_ENABLED"`
 	Path    string `yaml:"path" env:"SLACK_EVENT_LOG_PATH"`
@@ -45,6 +47,7 @@ type fileEventLogger struct {
 	mu  sync.Mutex
 }
 
+// NewFileEventLogger opens or creates the log file at cfg.Path and returns an EventLogger.
 func NewFileEventLogger(cfg EventLogConfig) (EventLogger, error) {
 	path := expandPath(cfg.Path)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -80,6 +83,7 @@ func (l *fileEventLogger) Close() error {
 	return l.w.Close()
 }
 
+// NewDiscardEventLogger returns an EventLogger that silently drops all events.
 func NewDiscardEventLogger() EventLogger {
 	return discardLogger{}
 }

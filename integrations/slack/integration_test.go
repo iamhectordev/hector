@@ -457,6 +457,7 @@ func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
 		done <- m.Run(ctx)
 	}()
 
+	// Push from blocked user first — no enrichment expected (filter fires before enrichment).
 	require.NoError(t, srv.Push(ctx, &slackevents.MessageEvent{
 		Channel:     "D111",
 		User:        "U999",
@@ -465,6 +466,7 @@ func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
 		TimeStamp:   "1610241741.000100",
 	}))
 
+	// Push from allowed user next. When this arrives on the bus, U999's was already processed.
 	srv.ExpectWithResponse("users.info", map[string]any{
 		"ok": true,
 		"user": map[string]any{

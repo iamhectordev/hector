@@ -15,6 +15,7 @@ import (
 
 type messageHandler func(ctx context.Context, e *slackevents.MessageEvent) error
 
+// allowUsers wraps a messageHandler and drops messages from users not in the allowlist.
 func allowUsers(ids []string, next messageHandler) messageHandler {
 	allowed := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
@@ -119,6 +120,7 @@ func (m *Integration) handleMessage(ctx context.Context, e *slackevents.MessageE
 
 	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(data.Channel.ID, data.ThreadTS)})
 	ctx = telem.WithBaggage(ctx, receivedBaggage(data)...)
+	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
 	if err = m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)
 	}

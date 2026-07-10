@@ -18,6 +18,7 @@ import (
 
 var upgrader = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 
+// Server is a fake Slack Socket Mode server for use in tests.
 type Server struct {
 	baseURL      string
 	conn         *websocket.Conn
@@ -32,6 +33,7 @@ type ExpectationEntry struct {
 	response any
 }
 
+// New starts a fake Slack server on a random port and registers cleanup with t.
 func New(t *testing.T) *Server {
 	t.Helper()
 
@@ -63,12 +65,16 @@ func New(t *testing.T) *Server {
 	return s
 }
 
+// BaseURL returns the HTTP base URL of the fake server.
 func (s *Server) BaseURL() string { return s.baseURL }
 
+// Expect pre-registers an expectation for the given Slack API method (e.g.
+// "chat.postMessage") returning a default {"ok": true} response.
 func (s *Server) Expect(method string) *Expectation {
 	return s.ExpectWithResponse(method, map[string]any{"ok": true})
 }
 
+// ExpectWithResponse pre-registers an expectation returning a specific JSON response.
 func (s *Server) ExpectWithResponse(method string, response any) *Expectation {
 	ch := make(chan url.Values, 1)
 	s.mu.Lock()
@@ -80,6 +86,8 @@ func (s *Server) ExpectWithResponse(method string, response any) *Expectation {
 	return &Expectation{ch: ch}
 }
 
+// Push sends a Socket Mode event to the connected client and waits for the ACK.
+// Accepts typed slackevents event structs (e.g. *slackevents.MessageEvent).
 func (s *Server) Push(ctx context.Context, event any) error {
 	select {
 	case <-s.connected:
@@ -92,7 +100,7 @@ func (s *Server) Push(ctx context.Context, event any) error {
 		return fmt.Errorf("slackmock: build payload: %w", err)
 	}
 
-	conn := s.conn
+	conn := s.conn // safe: conn is written before connected is closed
 
 	envelopeID := fmt.Sprintf("env-%d", s.seq.Add(1))
 	env := map[string]any{
@@ -187,6 +195,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	s.conn = conn
 
+	// send hello before signaling readiness so Push never races with this write
 	conn.WriteJSON(map[string]any{ //nolint:errcheck
 		"type":            "hello",
 		"num_connections": 1,
@@ -196,6 +205,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	close(s.connected)
 }
 
+// buildPayload wraps a typed slack event in an event_callback envelope.
 func buildPayload(event any) (json.RawMessage, error) {
 	var innerType string
 	switch event.(type) {
@@ -210,6 +220,7 @@ func buildPayload(event any) (json.RawMessage, error) {
 		return nil, err
 	}
 
+	// inject "type" into the inner event map
 	innerMap := make(map[string]any)
 	if err := json.Unmarshal(inner, &innerMap); err != nil {
 		return nil, err
@@ -217,6 +228,9 @@ func buildPayload(event any) (json.RawMessage, error) {
 	innerMap["type"] = innerType
 
 	callbackType := "event_callback"
+	if eventType, ok := innerMap["type"].(string); ok && eventType == "message" {
+		callbackType = "event_callback"
+	}
 
 	return json.Marshal(map[string]any{
 		"token":      "verification-token",
