@@ -14,6 +14,12 @@ Session IDs live in `.worktrees/logs/<issue>.ndjson` (`orch.sh session <issue>`)
 
 **Milestone complete** — all five slices integrated on 2026-07-10.
 
+# int2 — Config shape (branch prefix `int2/`, pass ORCH_BRANCH_PREFIX=int2)
+
+| Issue | Spec | Depends | Status | Notes |
+|---|---|---|---|---|
+| int2-01 | docs/specs/int2/01-integrations-config-nesting.md | — | running | breaking yaml: slack/github nest under integrations: |
+
 int1-03 and int1-04 can run in parallel once int1-02 is integrated (04's spec
 covers the loop-merge if 03 hasn't landed).
 
