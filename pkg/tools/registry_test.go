@@ -8,11 +8,11 @@ import (
 	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/stretchr/testify/require"
 
-	"github.com/iamhectordev/hector/modules/tools"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 )
 
 func TestRegistryRun(t *testing.T) {
-	registry, err := tools.NewRegistry(echoTool{})
+	registry, err := pkgtools.NewRegistry(echoTool{})
 	require.NoError(t, err)
 
 	output, err := registry.Run(t.Context(), "test_echo", json.RawMessage(`{"value":"hello"}`))
@@ -21,7 +21,7 @@ func TestRegistryRun(t *testing.T) {
 }
 
 func TestRegistryRunUnknownTool(t *testing.T) {
-	registry, err := tools.NewRegistry()
+	registry, err := pkgtools.NewRegistry()
 	require.NoError(t, err)
 
 	output, err := registry.Run(t.Context(), "missing", json.RawMessage(`{}`))
@@ -31,7 +31,7 @@ func TestRegistryRunUnknownTool(t *testing.T) {
 }
 
 func TestRegistryDefinitionsAreSorted(t *testing.T) {
-	registry, err := tools.NewRegistry(
+	registry, err := pkgtools.NewRegistry(
 		namedTool{name: "z_last"},
 		namedTool{name: "a_first"},
 		namedTool{name: "m_middle"},
@@ -46,10 +46,10 @@ func TestRegistryDefinitionsAreSorted(t *testing.T) {
 }
 
 func TestRegistryRunsTimeNow(t *testing.T) {
-	tn, err := tools.NewTimeNow()
+	tn, err := pkgtools.NewTimeNow()
 	require.NoError(t, err)
 
-	registry, err := tools.NewRegistry(tn)
+	registry, err := pkgtools.NewRegistry(tn)
 	require.NoError(t, err)
 
 	output, err := registry.Run(t.Context(), "time_now", nil)
@@ -59,7 +59,7 @@ func TestRegistryRunsTimeNow(t *testing.T) {
 
 func TestRegistryRunTracesExecution(t *testing.T) {
 	recorder := newSpanRecorder(t)
-	registry, err := tools.NewRegistry(echoTool{})
+	registry, err := pkgtools.NewRegistry(echoTool{})
 	require.NoError(t, err)
 
 	ctx, parent := telem.Trace(t.Context(), "tool.call")
@@ -76,7 +76,7 @@ func TestRegistryRunTracesExecution(t *testing.T) {
 }
 
 func TestRegistryRejectsNonSnakeCaseToolName(t *testing.T) {
-	_, err := tools.NewRegistry(namedTool{name: "bad.name"})
+	_, err := pkgtools.NewRegistry(namedTool{name: "bad.name"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "snake_case")
 }
@@ -85,8 +85,8 @@ type namedTool struct {
 	name string
 }
 
-func (n namedTool) Definition() tools.Definition {
-	return tools.Definition{
+func (n namedTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
 		Name:        n.name,
 		Description: "A named test tool.",
 		Parameters:  json.RawMessage(`{"type":"object"}`),
@@ -95,4 +95,19 @@ func (n namedTool) Definition() tools.Definition {
 
 func (namedTool) Run(_ context.Context, _ json.RawMessage) (string, error) {
 	return "ok", nil
+}
+
+// echoTool is duplicated here so pkg/tools tests are self-contained.
+type echoTool struct{}
+
+func (echoTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
+		Name:        "test_echo",
+		Description: "Echoes the input.",
+		Parameters:  json.RawMessage(`{"type":"object"}`),
+	}
+}
+
+func (echoTool) Run(_ context.Context, args json.RawMessage) (string, error) {
+	return string(args), nil
 }

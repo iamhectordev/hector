@@ -8,17 +8,9 @@ import (
 )
 
 const (
-	spanRegistryRun  = "tool.registry.run"
 	spanMemoryRecall = "memory.recall"
 	spanMCPCall      = "github.mcp.call"
 )
-
-func registryFields(name string, found bool) []telem.Field {
-	return []telem.Field{
-		telem.String("tool.name", name),
-		telem.Bool("tool.found", found),
-	}
-}
 
 func recallFields(query string, resultCount int) []telem.Field {
 	return []telem.Field{
