@@ -10,7 +10,9 @@ Session IDs live in `.worktrees/logs/<issue>.ndjson` (`orch.sh session <issue>`)
 | int1-02 | docs/specs/int1/02-integration-contracts.md | int1-01 | integrated | gate pass attempt 1; contracts match design 1:1 |
 | int1-03 | docs/specs/int1/03-github-integration.md | int1-02 | integrated | 2 rework rounds: stale-base rebase (false PASS claim), then clean --onto rebase merging slack+github wiring |
 | int1-04 | docs/specs/int1/04-slack-integration.md | int1-02 | integrated | 1 rework round: worker stripped comments + mock logic during move; restored, re-verified |
-| int1-05 | docs/specs/int1/05-architecture-docs.md | int1-03, int1-04 | running | docs only |
+| int1-05 | docs/specs/int1/05-architecture-docs.md | int1-03, int1-04 | integrated | 1 rework round: four tree annotations were factually wrong; corrected and re-verified |
+
+**Milestone complete** — all five slices integrated on 2026-07-10.
 
 int1-03 and int1-04 can run in parallel once int1-02 is integrated (04's spec
 covers the loop-merge if 03 hasn't landed).
