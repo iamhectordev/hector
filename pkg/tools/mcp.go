@@ -7,8 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/iamhectordev/hector/internal/mcp"
-	pkgtools "github.com/iamhectordev/hector/pkg/tools"
+	"github.com/iamhectordev/hector/pkg/mcp"
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
@@ -53,8 +52,8 @@ func NewMCPTool(prefix string, client mcpClient, tool mcp.Tool) (*MCPTool, error
 	}, nil
 }
 
-func (t *MCPTool) Definition() pkgtools.Definition {
-	return pkgtools.Definition{
+func (t *MCPTool) Definition() Definition {
+	return Definition{
 		Name:        t.name,
 		Description: t.description,
 		Parameters:  t.parameters,
@@ -75,14 +74,30 @@ func (t *MCPTool) Run(ctx context.Context, args json.RawMessage) (string, error)
 	result, err := t.client.CallTool(ctx, t.mcpName, args)
 	if err != nil {
 		err = fmt.Errorf("mcp call: %w", err)
-		return pkgtools.Fail(err.Error())
+		return Fail(err.Error())
 	}
 	span.AddFields(mcpFields(t.server, t.mcpName, result)...)
-	return pkgtools.OK(result)
+	return OK(result)
 }
 
 func normalizeMCPToolName(prefix, name string) string {
 	raw := strings.ToLower(strings.TrimSpace(prefix + "_" + name))
 	normalized := nonToolNameChar.ReplaceAllString(raw, "_")
 	return strings.Trim(normalized, "_")
+}
+
+const spanMCPCall = "github.mcp.call"
+
+func mcpFields(server, toolName string, result mcp.ToolResult) []telem.Field {
+	fields := []telem.Field{
+		telem.String("mcp.server", server),
+		telem.String("mcp.tool_name", toolName),
+		telem.Bool("mcp.is_error", result.IsError),
+		telem.Int("mcp.content_count", len(result.Content)),
+	}
+	return fields
+}
+
+func jsonArgsSize(args json.RawMessage) telem.Field {
+	return telem.Int("tool.args_bytes", len(args))
 }

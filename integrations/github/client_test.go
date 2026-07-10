@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	gh "github.com/iamhectordev/hector/internal/github"
+	gh "github.com/iamhectordev/hector/integrations/github"
 	"github.com/stretchr/testify/require"
 )
 

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/iamhectordev/hector/internal/mcp"
-	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/mcp"
+	"github.com/iamhectordev/hector/pkg/tools"
 	"github.com/stretchr/testify/require"
 )
 

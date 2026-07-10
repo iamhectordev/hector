@@ -4,22 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"io"
 	"log/slog"
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/internal/embed"
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
+	"github.com/iamhectordev/hector/integrations"
+	githubpkg "github.com/iamhectordev/hector/integrations/github"
+	slackintegration "github.com/iamhectordev/hector/integrations/slack"
 	"github.com/iamhectordev/hector/modules/agent"
 	emailmodule "github.com/iamhectordev/hector/modules/email"
 	memorymod "github.com/iamhectordev/hector/modules/memory"
-	"github.com/iamhectordev/hector/integrations"
-	slackintegration "github.com/iamhectordev/hector/integrations/slack"
 	toolsmod "github.com/iamhectordev/hector/modules/tools"
-	githubtools "github.com/iamhectordev/hector/modules/tools/github"
 	"github.com/iamhectordev/hector/modules/tools/web"
-	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
@@ -28,6 +26,7 @@ import (
 	sessionsqlite "github.com/iamhectordev/hector/pkg/session/sqlite"
 	"github.com/iamhectordev/hector/pkg/supervisor"
 	"github.com/iamhectordev/hector/pkg/telem"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	wafflesqlite "github.com/iamhectordev/hector/pkg/waffle/sqlite"
 )
@@ -38,11 +37,10 @@ type Runtime struct {
 	profile Profile
 	logger  *slog.Logger
 
-	tracing      *tracing.Runtime
-	db           *sql.DB
-	bus          *waffle.EventBus
-	sv           *supervisor.Supervisor
-	githubCloser io.Closer
+	tracing *tracing.Runtime
+	db      *sql.DB
+	bus     *waffle.EventBus
+	sv      *supervisor.Supervisor
 }
 
 // NewRuntime builds a Runtime from typed application config.
@@ -117,16 +115,20 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	integrationHosts, integrationReplyHandlers, err := r.initIntegrations()
+	integs, err := r.buildIntegrations(ctx)
 	if err != nil {
 		return err
 	}
-	replyHandlers := append(surfaceReplyHandlers, integrationReplyHandlers...)
+	replyHandlers := append(surfaceReplyHandlers, integrationReplyHandlers(integs)...)
 	memStore, err := r.initMemoryStore()
 	if err != nil {
 		return err
 	}
 	toolRegistry, toolsModule, err := r.initTools(replyHandlers, webSearch, memStore)
+	if err != nil {
+		return err
+	}
+	integrationHosts, err := r.initIntegrations(integs, toolRegistry)
 	if err != nil {
 		return err
 	}
@@ -178,33 +180,64 @@ func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, err
 	}
 }
 
-func (r *Runtime) initIntegrations() ([]supervisor.Module, []comms.ReplyHandler, error) {
-	var hosts []supervisor.Module
-	var replyHandlers []comms.ReplyHandler
+func (r *Runtime) buildIntegrations(ctx context.Context) ([]integrations.Integration, error) {
+	var integs []integrations.Integration
 
 	if r.cfg.Slack.Enabled {
 		slk, err := slackintegration.New(r.bus, &r.cfg.Slack)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		if sf, ok := any(slk).(integrations.Surface); ok {
-			replyHandlers = append(replyHandlers, sf.ReplyHandler())
-		}
-		host, err := integrations.NewHost(slk)
+		integs = append(integs, slk)
+	}
+
+	if r.cfg.GitHub.Enabled {
+		gh, err := githubpkg.New(ctx, r.cfg.GitHub)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		hosts = append(hosts, host)
+		integs = append(integs, gh)
 	}
 
-	if r.profile == ProfileServe && len(hosts) == 0 {
-		return nil, nil, fmt.Errorf("serve requires at least one enabled integration")
+	if r.profile == ProfileServe && len(integs) == 0 {
+		return nil, fmt.Errorf("serve requires at least one enabled integration")
 	}
 
-	return hosts, replyHandlers, nil
+	return integs, nil
 }
 
-func (r *Runtime) initTools(	replyHandlers []comms.ReplyHandler, webSearch pkgtools.Tool, memStore *memorysqlite.Store) (*pkgtools.Registry, *toolsmod.Module, error) {
+func integrationReplyHandlers(integs []integrations.Integration) []comms.ReplyHandler {
+	var handlers []comms.ReplyHandler
+	for _, integ := range integs {
+		if sf, ok := integ.(integrations.Surface); ok {
+			handlers = append(handlers, sf.ReplyHandler())
+		}
+	}
+	return handlers
+}
+
+func (r *Runtime) initIntegrations(integs []integrations.Integration, registry *pkgtools.Registry) ([]supervisor.Module, error) {
+	var hosts []supervisor.Module
+
+	for _, integ := range integs {
+		if tp, ok := any(integ).(integrations.ToolProvider); ok {
+			for _, t := range tp.Tools() {
+				if err := registry.Register(t); err != nil {
+					return nil, err
+				}
+			}
+		}
+		h, err := integrations.NewHost(integ)
+		if err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+
+	return hosts, nil
+}
+
+func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch pkgtools.Tool, memStore *memorysqlite.Store) (*pkgtools.Registry, *toolsmod.Module, error) {
 	replyRouter, err := comms.NewReplyRouter(replyHandlers...)
 	if err != nil {
 		return nil, nil, err
@@ -245,20 +278,13 @@ func (r *Runtime) initModules(
 	memStore *memorysqlite.Store,
 ) ([]supervisor.Module, error) {
 	modules := []supervisor.Module{}
-	if r.cfg.GitHub.Enabled {
-		githubCloser, err := githubtools.Register(ctx, r.cfg.GitHub, toolRegistry)
-		if err != nil {
-			return nil, err
-		}
-		r.githubCloser = githubCloser
-	}
 
+	var err error
 	sessionStore := sessionsqlite.NewStore(r.db)
 	loop := agent.NewLoop(completer,
 		agent.WithTools(toolRegistry),
 	)
 	var perceiver agent.Perceiver
-	var err error
 	if r.cfg.Agent.Perception.Enabled {
 		perceiver, err = agent.NewStructuredPerceiver(completer)
 		if err != nil {
@@ -324,11 +350,6 @@ func (r *Runtime) initSupervisor(ctx context.Context, modules []supervisor.Modul
 }
 
 func (r *Runtime) close(ctx context.Context) {
-	if r.githubCloser != nil {
-		if err := r.githubCloser.Close(); err != nil {
-			telem.Logger(ctx).ErrorContext(ctx, "failed to close github mcp client", telem.Any("err", err))
-		}
-	}
 	if r.db != nil {
 		if err := r.db.Close(); err != nil {
 			telem.Logger(ctx).ErrorContext(ctx, "failed to close sqlite database", telem.Any("err", err))

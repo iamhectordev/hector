@@ -2,26 +2,18 @@ package github_test
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
-	gh "github.com/iamhectordev/hector/internal/github"
-	githubtools "github.com/iamhectordev/hector/modules/tools/github"
-	pkgtools "github.com/iamhectordev/hector/pkg/tools"
+	githubpkg "github.com/iamhectordev/hector/integrations/github"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRegisterAddsToolsToRegistry(t *testing.T) {
+func TestNewIntegrationHasAllTools(t *testing.T) {
 	t.Parallel()
 
 	privateKeyPath := writeTestPrivateKey(t)
@@ -37,49 +29,86 @@ func TestRegisterAddsToolsToRegistry(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	registry, err := pkgtools.NewRegistry()
-	require.NoError(t, err)
 	executable, err := os.Executable()
 	require.NoError(t, err)
 
-	closer, err := githubtools.Register(t.Context(), gh.Config{
+	integration, err := githubpkg.New(t.Context(), githubpkg.Config{
 		Enabled:        true,
 		AppID:          123,
 		InstallationID: 456,
 		PrivateKeyPath: privateKeyPath,
 		APIURL:         server.URL,
-		MCP: gh.MCPConfig{
+		MCP: githubpkg.MCPConfig{
 			Transport:    "stdio",
 			StdioCommand: executable,
 			StdioArgs:    []string{"-test.run=TestGitHubFakeMCPServer", "--"},
 			StdioEnv:     map[string]string{"HECTOR_GITHUB_MCP_TEST_SERVER": "1"},
 		},
-	}, registry)
+	})
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		require.NoError(t, closer.Close())
+		require.NoError(t, integration.Close())
 	})
 
+	require.Equal(t, "github", integration.Name())
 
-
-	defs := registry.Definitions()
-	names := make([]string, 0, len(defs))
-	for _, def := range defs {
-		names = append(names, def.Name)
+	toolList := integration.Tools()
+	names := make([]string, 0, len(toolList))
+	for _, tool := range toolList {
+		names = append(names, tool.Definition().Name)
 	}
 	require.Equal(t, []string{
-		"create_blocked_by_relationship",
-		"create_milestone",
 		"get_issue",
-		"github_repos_list",
+		"create_milestone",
 		"list_milestones",
-		"remove_blocked_by_relationship",
 		"update_milestone",
+		"create_blocked_by_relationship",
+		"remove_blocked_by_relationship",
+		"github_repos_list",
 	}, names)
+}
 
-	output, err := registry.Run(t.Context(), "github_repos_list", json.RawMessage(`{"owner":"iamhectordev"}`))
+func TestNewIntegrationWithoutMCP(t *testing.T) {
+	t.Parallel()
+
+	privateKeyPath := writeTestPrivateKey(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/app/installations/456/access_tokens":
+			w.WriteHeader(http.StatusCreated)
+			_, err := fmt.Fprint(w, `{"token":"installation-token","expires_at":"2026-05-22T12:00:00Z"}`)
+			require.NoError(t, err)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	integration, err := githubpkg.New(t.Context(), githubpkg.Config{
+		Enabled:        true,
+		AppID:          123,
+		InstallationID: 456,
+		PrivateKeyPath: privateKeyPath,
+		APIURL:         server.URL,
+	})
 	require.NoError(t, err)
-	require.JSONEq(t, `{"status":"ok","result":{"content":[{"type":"text","text":"listed repos"}],"isError":false}}`, output)
+	t.Cleanup(func() {
+		require.NoError(t, integration.Close())
+	})
+
+	toolList := integration.Tools()
+	names := make([]string, 0, len(toolList))
+	for _, tool := range toolList {
+		names = append(names, tool.Definition().Name)
+	}
+	require.Equal(t, []string{
+		"get_issue",
+		"create_milestone",
+		"list_milestones",
+		"update_milestone",
+		"create_blocked_by_relationship",
+		"remove_blocked_by_relationship",
+	}, names)
 }
 
 func TestGitHubFakeMCPServer(t *testing.T) {
@@ -111,17 +140,4 @@ type listReposInput struct {
 
 type listReposOutput struct {
 	OK bool `json:"ok"`
-}
-
-func writeTestPrivateKey(t *testing.T) string {
-	t.Helper()
-
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-
-	der := x509.MarshalPKCS1PrivateKey(key)
-	block := &pem.Block{Type: "RSA PRIVATE KEY", Bytes: der}
-	path := filepath.Join(t.TempDir(), "github-app.pem")
-	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(block), 0o600))
-	return path
 }

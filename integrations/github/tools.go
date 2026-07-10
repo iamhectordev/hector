@@ -5,17 +5,16 @@ import (
 	"fmt"
 	"strings"
 
-	gh "github.com/iamhectordev/hector/internal/github"
-	pkgtools "github.com/iamhectordev/hector/pkg/tools"
+	"github.com/iamhectordev/hector/pkg/tools"
 )
 
 type toolsClient interface {
-	GetIssueWithBlocking(context.Context, gh.Repository, int) (gh.IssueWithBlocking, error)
-	CreateMilestone(context.Context, gh.Repository, string, ...gh.MilestoneOption) (gh.Milestone, error)
-	ListMilestones(context.Context, gh.Repository, ...gh.ListMilestonesOption) ([]gh.Milestone, error)
-	UpdateMilestone(context.Context, gh.Repository, int, ...gh.MilestoneOption) (gh.Milestone, error)
-	AddBlockedBy(context.Context, gh.Repository, int, int) (gh.IssueWithBlocking, error)
-	RemoveBlockedBy(context.Context, gh.Repository, int, int) (gh.IssueWithBlocking, error)
+	GetIssueWithBlocking(context.Context, Repository, int) (IssueWithBlocking, error)
+	CreateMilestone(context.Context, Repository, string, ...MilestoneOption) (Milestone, error)
+	ListMilestones(context.Context, Repository, ...ListMilestonesOption) ([]Milestone, error)
+	UpdateMilestone(context.Context, Repository, int, ...MilestoneOption) (Milestone, error)
+	AddBlockedBy(context.Context, Repository, int, int) (IssueWithBlocking, error)
+	RemoveBlockedBy(context.Context, Repository, int, int) (IssueWithBlocking, error)
 }
 
 type getIssueInput struct {
@@ -47,114 +46,119 @@ type blockedByRelationshipInput struct {
 	BlockedIssueNumber  int    `json:"blocked_issue_number" jsonschema:"issue number that is blocked"`
 }
 
-func NewGetIssueTool(client toolsClient) (pkgtools.Tool, error) {
-	return pkgtools.New(
+// NewGetIssueTool returns a tool that fetches one GitHub issue with blocking info.
+func NewGetIssueTool(client toolsClient) (tools.Tool, error) {
+	return tools.New(
 		"get_issue",
 		"Returns one GitHub issue with blocked_by and blocks arrays. Requires repo as owner/name.",
-		func(ctx context.Context, in getIssueInput) (gh.IssueWithBlocking, error) {
+		func(ctx context.Context, in getIssueInput) (IssueWithBlocking, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return gh.IssueWithBlocking{}, err
+				return IssueWithBlocking{}, err
 			}
 			if in.IssueNumber <= 0 {
-				return gh.IssueWithBlocking{}, fmt.Errorf("github: issue_number must be positive")
+				return IssueWithBlocking{}, fmt.Errorf("github: issue_number must be positive")
 			}
 			return client.GetIssueWithBlocking(ctx, repo, in.IssueNumber)
 		},
 	)
 }
 
-func NewCreateMilestoneTool(client toolsClient) (pkgtools.Tool, error) {
-	return pkgtools.New(
+// NewCreateMilestoneTool returns a tool that creates a GitHub milestone.
+func NewCreateMilestoneTool(client toolsClient) (tools.Tool, error) {
+	return tools.New(
 		"create_milestone",
 		"Creates a GitHub milestone and returns the milestone JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in createMilestoneInput) (gh.Milestone, error) {
+		func(ctx context.Context, in createMilestoneInput) (Milestone, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return gh.Milestone{}, err
+				return Milestone{}, err
 			}
-			opts := []gh.MilestoneOption{}
+			opts := []MilestoneOption{}
 			if in.Description != nil {
-				opts = append(opts, gh.WithMilestoneDescription(*in.Description))
+				opts = append(opts, WithMilestoneDescription(*in.Description))
 			}
 			return client.CreateMilestone(ctx, repo, in.Title, opts...)
 		},
 	)
 }
 
-func NewListMilestonesTool(client toolsClient) (pkgtools.Tool, error) {
-	return pkgtools.New(
+// NewListMilestonesTool returns a tool that lists GitHub milestones.
+func NewListMilestonesTool(client toolsClient) (tools.Tool, error) {
+	return tools.New(
 		"list_milestones",
 		"Returns GitHub milestones for a repository. Requires repo as owner/name; state may be open, closed, or all.",
-		func(ctx context.Context, in listMilestonesInput) ([]gh.Milestone, error) {
+		func(ctx context.Context, in listMilestonesInput) ([]Milestone, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
 				return nil, err
 			}
-			opts := []gh.ListMilestonesOption{}
+			opts := []ListMilestonesOption{}
 			if in.State != "" {
-				opts = append(opts, gh.WithMilestoneState(in.State))
+				opts = append(opts, WithMilestoneState(in.State))
 			}
 			return client.ListMilestones(ctx, repo, opts...)
 		},
 	)
 }
 
-func NewUpdateMilestoneTool(client toolsClient) (pkgtools.Tool, error) {
-	return pkgtools.New(
+// NewUpdateMilestoneTool returns a tool that updates a GitHub milestone.
+func NewUpdateMilestoneTool(client toolsClient) (tools.Tool, error) {
+	return tools.New(
 		"update_milestone",
 		"Updates a GitHub milestone and returns the milestone JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in updateMilestoneInput) (gh.Milestone, error) {
+		func(ctx context.Context, in updateMilestoneInput) (Milestone, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return gh.Milestone{}, err
+				return Milestone{}, err
 			}
-			opts := []gh.MilestoneOption{}
+			opts := []MilestoneOption{}
 			if in.Title != nil {
-				opts = append(opts, gh.WithMilestoneTitle(*in.Title))
+				opts = append(opts, WithMilestoneTitle(*in.Title))
 			}
 			if in.Description != nil {
-				opts = append(opts, gh.WithMilestoneDescription(*in.Description))
+				opts = append(opts, WithMilestoneDescription(*in.Description))
 			}
 			return client.UpdateMilestone(ctx, repo, in.MilestoneNumber, opts...)
 		},
 	)
 }
 
-func NewCreateBlockedByRelationshipTool(client toolsClient) (pkgtools.Tool, error) {
-	return pkgtools.New(
+// NewCreateBlockedByRelationshipTool returns a tool that creates a blocked-by relationship.
+func NewCreateBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) {
+	return tools.New(
 		"create_blocked_by_relationship",
 		"Creates a GitHub blocked-by relationship and returns the updated blocked issue JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in blockedByRelationshipInput) (gh.IssueWithBlocking, error) {
+		func(ctx context.Context, in blockedByRelationshipInput) (IssueWithBlocking, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return gh.IssueWithBlocking{}, err
+				return IssueWithBlocking{}, err
 			}
 			return client.AddBlockedBy(ctx, repo, in.BlockingIssueNumber, in.BlockedIssueNumber)
 		},
 	)
 }
 
-func NewRemoveBlockedByRelationshipTool(client toolsClient) (pkgtools.Tool, error) {
-	return pkgtools.New(
+// NewRemoveBlockedByRelationshipTool returns a tool that removes a blocked-by relationship.
+func NewRemoveBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) {
+	return tools.New(
 		"remove_blocked_by_relationship",
 		"Removes a GitHub blocked-by relationship and returns the updated blocked issue JSON. Requires repo as owner/name.",
-		func(ctx context.Context, in blockedByRelationshipInput) (gh.IssueWithBlocking, error) {
+		func(ctx context.Context, in blockedByRelationshipInput) (IssueWithBlocking, error) {
 			repo, err := parseRepository(in.Repo)
 			if err != nil {
-				return gh.IssueWithBlocking{}, err
+				return IssueWithBlocking{}, err
 			}
 			return client.RemoveBlockedBy(ctx, repo, in.BlockingIssueNumber, in.BlockedIssueNumber)
 		},
 	)
 }
 
-// NewTools returns all GitHub tools. Returns an error if client is nil.
-func NewTools(client toolsClient) ([]pkgtools.Tool, error) {
+func newTools(client toolsClient) ([]tools.Tool, error) {
 	if client == nil {
 		return nil, fmt.Errorf("github: tools client is required")
 	}
-	constructors := []func(toolsClient) (pkgtools.Tool, error){
+	constructors := []func(toolsClient) (tools.Tool, error){
 		NewGetIssueTool,
 		NewCreateMilestoneTool,
 		NewListMilestonesTool,
@@ -162,7 +166,7 @@ func NewTools(client toolsClient) ([]pkgtools.Tool, error) {
 		NewCreateBlockedByRelationshipTool,
 		NewRemoveBlockedByRelationshipTool,
 	}
-	out := make([]pkgtools.Tool, 0, len(constructors))
+	out := make([]tools.Tool, 0, len(constructors))
 	for _, constructor := range constructors {
 		tool, err := constructor(client)
 		if err != nil {
@@ -173,10 +177,10 @@ func NewTools(client toolsClient) ([]pkgtools.Tool, error) {
 	return out, nil
 }
 
-func parseRepository(value string) (gh.Repository, error) {
+func parseRepository(value string) (Repository, error) {
 	owner, name, ok := strings.Cut(value, "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return gh.Repository{}, fmt.Errorf("github: repo must be owner/name")
+		return Repository{}, fmt.Errorf("github: repo must be owner/name")
 	}
-	return gh.Repository{Owner: owner, Name: name}, nil
+	return Repository{Owner: owner, Name: name}, nil
 }
