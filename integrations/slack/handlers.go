@@ -9,14 +9,12 @@ import (
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
 
-	islack "github.com/iamhectordev/hector/internal/slack"
 	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 type messageHandler func(ctx context.Context, e *slackevents.MessageEvent) error
 
-// allowUsers wraps a messageHandler and drops messages from users not in the allowlist.
 func allowUsers(ids []string, next messageHandler) messageHandler {
 	allowed := make(map[string]struct{}, len(ids))
 	for _, id := range ids {
@@ -32,7 +30,7 @@ func allowUsers(ids []string, next messageHandler) messageHandler {
 	}
 }
 
-func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
+func (m *Integration) handleSocketEvent(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
 	m.log(ctx).DebugContext(ctx, "slack socket event", telem.String("type", string(evt.Type)))
 	switch evt.Type {
 	case socketmode.EventTypeConnecting:
@@ -60,7 +58,7 @@ func (m *Module) handleSocketEvent(ctx context.Context, client *socketmode.Clien
 	}
 }
 
-func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
+func (m *Integration) handleEventsAPI(ctx context.Context, client *socketmode.Client, evt socketmode.Event) error {
 	apiEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 	if !ok {
 		return fmt.Errorf("slack: expected EventsAPIEvent, got %T", evt.Data)
@@ -86,7 +84,7 @@ func (m *Module) handleEventsAPI(ctx context.Context, client *socketmode.Client,
 	}
 }
 
-func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent) error {
+func (m *Integration) handleMessage(ctx context.Context, e *slackevents.MessageEvent) error {
 	m.log(ctx).DebugContext(ctx, "slack message event",
 		telem.String("user", e.User),
 		telem.String("channel", e.Channel),
@@ -107,7 +105,7 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 	var err error
 	defer span.End(&err)
 
-	data, ok, err := islack.ParseReceivedEvent(time.Now().UTC(), e)
+	data, ok, err := ParseReceivedEvent(time.Now().UTC(), e)
 	if err != nil {
 		return err
 	}
@@ -115,21 +113,20 @@ func (m *Module) handleMessage(ctx context.Context, e *slackevents.MessageEvent)
 		return nil
 	}
 
-	islack.NewMessageEnricher(m.api, m.botUserID).Enrich(ctx, &data, e)
+	NewMessageEnricher(m.api, m.botUserID).Enrich(ctx, &data, e)
 
 	data.Channel.Type = channelTypeFromSlack(e.ChannelType)
 
-	ctx = session.With(ctx, session.Session{SourceURI: islack.NewOriginURI(data.Channel.ID, data.ThreadTS)})
+	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(data.Channel.ID, data.ThreadTS)})
 	ctx = telem.WithBaggage(ctx, receivedBaggage(data)...)
-	// Record before ack so local persistence errors are not hidden behind a successful Slack ack.
-	if err = m.bus.Record(ctx, islack.MessageReceived.New(data)); err != nil {
+	if err = m.bus.Record(ctx, MessageReceived.New(data)); err != nil {
 		return fmt.Errorf("failed to record message received: %w", err)
 	}
 	return nil
 }
 
-func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.MessageEvent) error {
-	data, ok, err := islack.ParseChangedEvent(time.Now().UTC(), e)
+func (m *Integration) handleMessageChanged(ctx context.Context, e *slackevents.MessageEvent) error {
+	data, ok, err := ParseChangedEvent(time.Now().UTC(), e)
 	if err != nil {
 		return err
 	}
@@ -137,11 +134,11 @@ func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.Messag
 		return nil
 	}
 
-	islack.NewMessageEnricher(m.api, m.botUserID).Enrich(ctx, &data, e)
+	NewMessageEnricher(m.api, m.botUserID).Enrich(ctx, &data, e)
 
 	data.Channel.Type = channelTypeFromSlack(e.ChannelType)
 
-	updatedData := islack.MessageUpdatedData{
+	updatedData := MessageUpdatedData{
 		Channel:    data.Channel,
 		ThreadTS:   data.ThreadTS,
 		TS:         data.TS,
@@ -156,29 +153,29 @@ func (m *Module) handleMessageChanged(ctx context.Context, e *slackevents.Messag
 		UpdatedAt:  time.Now().UTC(),
 	}
 
-	ctx = session.With(ctx, session.Session{SourceURI: islack.NewOriginURI(updatedData.Channel.ID, updatedData.ThreadTS)})
-	if err := m.bus.Record(ctx, islack.MessageUpdated.New(updatedData)); err != nil {
+	ctx = session.With(ctx, session.Session{SourceURI: NewOriginURI(updatedData.Channel.ID, updatedData.ThreadTS)})
+	if err := m.bus.Record(ctx, MessageUpdated.New(updatedData)); err != nil {
 		return fmt.Errorf("failed to record message updated: %w", err)
 	}
 	return nil
 }
 
-func channelTypeFromSlack(channelType string) islack.ChannelType {
+func channelTypeFromSlack(channelType string) ChannelType {
 	switch channelType {
 	case "im":
-		return islack.ChannelTypeDM
+		return ChannelTypeDM
 	case "mpim":
-		return islack.ChannelTypeGroupDM
+		return ChannelTypeGroupDM
 	case "channel":
-		return islack.ChannelTypeChannel
+		return ChannelTypeChannel
 	case "group":
-		return islack.ChannelTypePrivate
+		return ChannelTypePrivate
 	default:
-		return islack.ChannelType(channelType)
+		return ChannelType(channelType)
 	}
 }
 
-func (m *Module) handleConnectionError(ctx context.Context, evt socketmode.Event) error {
+func (m *Integration) handleConnectionError(ctx context.Context, evt socketmode.Event) error {
 	e, ok := evt.Data.(*slack.ConnectionErrorEvent)
 	if !ok {
 		return fmt.Errorf("slack: expected ConnectionErrorEvent, got %T", evt.Data)

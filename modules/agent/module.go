@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	islack "github.com/iamhectordev/hector/internal/slack"
+	islack "github.com/iamhectordev/hector/integrations/slack"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/session"
 	"github.com/iamhectordev/hector/pkg/telem"

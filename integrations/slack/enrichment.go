@@ -10,7 +10,6 @@ import (
 	"github.com/sourcegraph/conc/pool"
 )
 
-// SlackAPI is the subset of the Slack client used for message enrichment.
 type SlackAPI interface {
 	GetUserInfoContext(ctx context.Context, user string) (*slackgo.User, error)
 	GetConversationInfoContext(ctx context.Context, input *slackgo.GetConversationInfoInput) (*slackgo.Channel, error)
@@ -19,13 +18,11 @@ type SlackAPI interface {
 	GetFileContext(ctx context.Context, downloadURL string, writer io.Writer) error
 }
 
-// MessageEnricher enriches MessageReceivedData with user, channel, reaction, and file details.
 type MessageEnricher struct {
 	api       SlackAPI
 	botUserID string
 }
 
-// NewMessageEnricher returns a MessageEnricher backed by the given API client.
 func NewMessageEnricher(api SlackAPI, botUserID string) MessageEnricher {
 	return MessageEnricher{api: api, botUserID: botUserID}
 }

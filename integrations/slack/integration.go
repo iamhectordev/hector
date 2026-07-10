@@ -4,27 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 
-	islack "github.com/iamhectordev/hector/internal/slack"
+	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	slackgo "github.com/slack-go/slack"
 	"github.com/slack-go/slack/socketmode"
 )
 
-// ModuleOption configures [NewModule].
-type ModuleOption func(*Module)
+type Option func(*Integration)
 
-// WithEventLogger sets the event logger for raw Slack events.
-func WithEventLogger(logger islack.EventLogger) ModuleOption {
-	return func(m *Module) {
+func WithEventLogger(logger EventLogger) Option {
+	return func(m *Integration) {
 		m.eventLogger = logger
 	}
 }
 
-// Module connects to Slack Socket Mode and publishes direct messages on the bus.
-type Module struct {
+type Integration struct {
 	bus         *waffle.EventBus
 	appToken    string
 	botToken    string
@@ -32,11 +30,11 @@ type Module struct {
 	api         *slackgo.Client
 	client      *socketmode.Client
 	botUserID   string
-	eventLogger islack.EventLogger
+	eventLogger EventLogger
 	onMessage   messageHandler
 }
 
-func NewModule(bus *waffle.EventBus, cfg *Config, opts ...ModuleOption) (*Module, error) {
+func New(bus *waffle.EventBus, cfg *Config, opts ...Option) (*Integration, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("slack: config is required")
 	}
@@ -51,14 +49,14 @@ func NewModule(bus *waffle.EventBus, cfg *Config, opts ...ModuleOption) (*Module
 	if err != nil {
 		return nil, fmt.Errorf("slack: bot_token: %w", err)
 	}
-	eventLogger := islack.NewDiscardEventLogger()
+	eventLogger := NewDiscardEventLogger()
 	if cfg.EventLog.Enabled {
-		eventLogger, err = islack.NewFileEventLogger(cfg.EventLog)
+		eventLogger, err = NewFileEventLogger(cfg.EventLog)
 		if err != nil {
 			return nil, err
 		}
 	}
-	m := &Module{
+	m := &Integration{
 		bus:         bus,
 		appToken:    appToken,
 		botToken:    botToken,
@@ -76,11 +74,11 @@ func NewModule(bus *waffle.EventBus, cfg *Config, opts ...ModuleOption) (*Module
 	return m, nil
 }
 
-func (m *Module) Name() string {
+func (m *Integration) Name() string {
 	return "slack"
 }
 
-func (m *Module) Init(ctx context.Context) error {
+func (m *Integration) Init(ctx context.Context) error {
 	options := []slackgo.Option{
 		slackgo.OptionAppLevelToken(m.appToken),
 	}
@@ -104,21 +102,8 @@ func (m *Module) Init(ctx context.Context) error {
 	return nil
 }
 
-func (m *Module) Start(ctx context.Context) error {
-	return m.run(ctx, m.client)
-}
-
-func (m *Module) Stop(context.Context) error {
-	return m.eventLogger.Close()
-}
-
-// NewReplyHandler returns a ReplyHandler backed by this module's API client.
-// Safe to call before Init — the client is resolved lazily at Reply time.
-func (m *Module) NewReplyHandler() *islack.ReplyHandler {
-	return islack.NewReplyHandler(func() islack.Replier { return m.api })
-}
-
-func (m *Module) run(ctx context.Context, client *socketmode.Client) error {
+func (m *Integration) Run(ctx context.Context) error {
+	client := m.client
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -137,7 +122,7 @@ func (m *Module) run(ctx context.Context, client *socketmode.Client) error {
 		if err != nil && !errors.Is(err, context.Canceled) {
 			return fmt.Errorf("slack: stop after run error: %w", err)
 		}
-		m.log(ctx).InfoContext(ctx, "slack module stopping", telem.Any("cause", context.Cause(ctx)))
+		m.log(ctx).InfoContext(ctx, "slack integration stopping", telem.Any("cause", context.Cause(ctx)))
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -151,7 +136,15 @@ func (m *Module) run(ctx context.Context, client *socketmode.Client) error {
 	}
 }
 
-func (m *Module) eventLoop(ctx context.Context, client *socketmode.Client) error {
+func (m *Integration) Close() error {
+	return m.eventLogger.Close()
+}
+
+func (m *Integration) ReplyHandler() comms.ReplyHandler {
+	return NewReplyHandler(func() Replier { return m.api })
+}
+
+func (m *Integration) eventLoop(ctx context.Context, client *socketmode.Client) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -173,9 +166,11 @@ func (m *Module) eventLoop(ctx context.Context, client *socketmode.Client) error
 	}
 }
 
-func (m *Module) log(ctx context.Context) telem.ContextLogger {
+func (m *Integration) log(ctx context.Context) telem.ContextLogger {
 	return telem.Logger(ctx).With(
 		telem.String("component", "module"),
 		telem.String("module", "slack"),
 	)
 }
+
+var _ io.Closer = (*Integration)(nil)

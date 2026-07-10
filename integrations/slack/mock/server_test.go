@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/iamhectordev/hector/internal/slack/mock"
+	"github.com/iamhectordev/hector/integrations/slack/mock"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"

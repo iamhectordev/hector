@@ -1,12 +1,29 @@
 package slack
 
 import (
-	islack "github.com/iamhectordev/hector/internal/slack"
+	"net/url"
+
 	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/slack-go/slack/slackevents"
 )
 
+const spanReplySend = "slack.reply.send"
 const spanMessageReceive = "slack.message.receive"
+
+func replyFields(uri *url.URL) []telem.Field {
+	channelID, threadTS, err := ParseOriginURI(uri)
+	if err != nil {
+		return []telem.Field{telem.String("surface.name", "slack")}
+	}
+	fields := []telem.Field{
+		telem.String("surface.name", "slack"),
+		telem.String("slack.channel_id", channelID),
+	}
+	if threadTS != "" {
+		fields = append(fields, telem.String("slack.thread_ts", threadTS))
+	}
+	return fields
+}
 
 func messageFields(e *slackevents.MessageEvent) []telem.Field {
 	fields := []telem.Field{
@@ -27,9 +44,9 @@ func messageFields(e *slackevents.MessageEvent) []telem.Field {
 	return fields
 }
 
-func receivedBaggage(data islack.MessageReceivedData) []telem.Field {
+func receivedBaggage(data MessageReceivedData) []telem.Field {
 	return []telem.Field{
 		telem.String("surface.name", "slack"),
-		telem.String("session.source_uri", islack.NewOriginURI(data.Channel.ID, data.ThreadTS)),
+		telem.String("session.source_uri", NewOriginURI(data.Channel.ID, data.ThreadTS)),
 	}
 }

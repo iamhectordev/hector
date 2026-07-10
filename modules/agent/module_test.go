@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	islack "github.com/iamhectordev/hector/internal/slack"
+	islack "github.com/iamhectordev/hector/integrations/slack"
 	"github.com/iamhectordev/hector/modules/agent"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/llm/schema"

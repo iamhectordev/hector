@@ -14,7 +14,8 @@ import (
 	"github.com/iamhectordev/hector/modules/agent"
 	emailmodule "github.com/iamhectordev/hector/modules/email"
 	memorymod "github.com/iamhectordev/hector/modules/memory"
-	"github.com/iamhectordev/hector/modules/slack"
+	"github.com/iamhectordev/hector/integrations"
+	slackintegration "github.com/iamhectordev/hector/integrations/slack"
 	toolsmod "github.com/iamhectordev/hector/modules/tools"
 	githubtools "github.com/iamhectordev/hector/modules/tools/github"
 	"github.com/iamhectordev/hector/modules/tools/web"
@@ -112,10 +113,15 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	surfaces, replyHandlers, err := r.initSurfaces()
+	surfaces, surfaceReplyHandlers, err := r.initSurfaces()
 	if err != nil {
 		return err
 	}
+	integrationHosts, integrationReplyHandlers, err := r.initIntegrations()
+	if err != nil {
+		return err
+	}
+	replyHandlers := append(surfaceReplyHandlers, integrationReplyHandlers...)
 	memStore, err := r.initMemoryStore()
 	if err != nil {
 		return err
@@ -124,7 +130,7 @@ func (r *Runtime) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	modules, err := r.initModules(ctx, completer, toolRegistry, toolsModule, surfaces, memStore)
+	modules, err := r.initModules(ctx, completer, toolRegistry, toolsModule, append(surfaces, integrationHosts...), memStore)
 	if err != nil {
 		return err
 	}
@@ -164,16 +170,38 @@ func (r *Runtime) initBus(ctx context.Context) error {
 func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, error) {
 	switch r.profile {
 	case ProfileServe:
-		slackModule, err := slack.NewModule(r.bus, &r.cfg.Slack)
-		if err != nil {
-			return nil, nil, err
-		}
-		return []supervisor.Module{slackModule}, []comms.ReplyHandler{slackModule.NewReplyHandler()}, nil
+		return nil, nil, nil
 	case ProfileChat:
 		return []supervisor.Module{tui.NewModule(r.bus)}, []comms.ReplyHandler{tui.NewReplyHandler(nil)}, nil
 	default:
 		return nil, nil, fmt.Errorf("app: unsupported profile %q", r.profile)
 	}
+}
+
+func (r *Runtime) initIntegrations() ([]supervisor.Module, []comms.ReplyHandler, error) {
+	var hosts []supervisor.Module
+	var replyHandlers []comms.ReplyHandler
+
+	if r.cfg.Slack.Enabled {
+		slk, err := slackintegration.New(r.bus, &r.cfg.Slack)
+		if err != nil {
+			return nil, nil, err
+		}
+		if sf, ok := any(slk).(integrations.Surface); ok {
+			replyHandlers = append(replyHandlers, sf.ReplyHandler())
+		}
+		host, err := integrations.NewHost(slk)
+		if err != nil {
+			return nil, nil, err
+		}
+		hosts = append(hosts, host)
+	}
+
+	if r.profile == ProfileServe && len(hosts) == 0 {
+		return nil, nil, fmt.Errorf("serve requires at least one enabled integration")
+	}
+
+	return hosts, replyHandlers, nil
 }
 
 func (r *Runtime) initTools(	replyHandlers []comms.ReplyHandler, webSearch pkgtools.Tool, memStore *memorysqlite.Store) (*pkgtools.Registry, *toolsmod.Module, error) {

@@ -8,7 +8,7 @@ import (
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
-	"github.com/iamhectordev/hector/modules/slack"
+	slack "github.com/iamhectordev/hector/integrations/slack"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/memory"
 )
