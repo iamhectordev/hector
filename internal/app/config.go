@@ -4,7 +4,7 @@ import (
 	kleelog "github.com/doron-cohen/klee/log"
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
 	"github.com/iamhectordev/hector/internal/email"
-	gh "github.com/iamhectordev/hector/internal/github"
+	gh "github.com/iamhectordev/hector/integrations/github"
 	"github.com/iamhectordev/hector/internal/tracing"
 	"github.com/iamhectordev/hector/internal/web/search"
 	"github.com/iamhectordev/hector/modules/agent"
