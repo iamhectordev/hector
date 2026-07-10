@@ -6,10 +6,11 @@ import (
 	"errors"
 	"testing"
 
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
+	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/stretchr/testify/require"
 
 	"github.com/iamhectordev/hector/modules/tools"
-	"github.com/iamhectordev/hector/pkg/waffle"
 )
 
 func TestModuleEmitsCallCompleted(t *testing.T) {
@@ -17,7 +18,7 @@ func TestModuleEmitsCallCompleted(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	registry, err := tools.NewRegistry(echoTool{})
+	registry, err := pkgtools.NewRegistry(echoTool{})
 	require.NoError(t, err)
 	module, err := tools.NewModule(bus, registry)
 	require.NoError(t, err)
@@ -43,7 +44,7 @@ func TestModuleEmitsErrorForUnknownTool(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	registry, err := tools.NewRegistry()
+	registry, err := pkgtools.NewRegistry()
 	require.NoError(t, err)
 	module, err := tools.NewModule(bus, registry)
 	require.NoError(t, err)
@@ -69,7 +70,7 @@ func TestModuleEmitsErrorForToolFailure(t *testing.T) {
 	store := waffle.NewMemoryStore()
 	bus, err := waffle.NewEventBus(waffle.WithStore(store))
 	require.NoError(t, err)
-	registry, err := tools.NewRegistry(failingTool{})
+	registry, err := pkgtools.NewRegistry(failingTool{})
 	require.NoError(t, err)
 	module, err := tools.NewModule(bus, registry)
 	require.NoError(t, err)
@@ -107,8 +108,8 @@ func completedEvents(t *testing.T, store *waffle.MemoryStore) []tools.CallComple
 
 type echoTool struct{}
 
-func (echoTool) Definition() tools.Definition {
-	return tools.Definition{
+func (echoTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
 		Name:        "test_echo",
 		Description: "Echoes the input.",
 		Parameters:  json.RawMessage(`{"type":"object"}`),
@@ -121,8 +122,8 @@ func (echoTool) Run(_ context.Context, args json.RawMessage) (string, error) {
 
 type failingTool struct{}
 
-func (failingTool) Definition() tools.Definition {
-	return tools.Definition{
+func (failingTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
 		Name:        "test_fail",
 		Description: "Always fails.",
 		Parameters:  json.RawMessage(`{"type":"object"}`),
@@ -137,23 +138,23 @@ func TestModuleRejectsNilRegistry(t *testing.T) {
 	bus, err := waffle.NewEventBus()
 	require.NoError(t, err)
 	_, err = tools.NewModule(bus, nil)
-	require.ErrorIs(t, err, tools.ErrNilRegistry)
+	require.ErrorIs(t, err, pkgtools.ErrNilRegistry)
 }
 
 func TestRegistryRejectsToolWithEmptyName(t *testing.T) {
-	_, err := tools.NewRegistry(badTool{name: ""})
+	_, err := pkgtools.NewRegistry(badTool{name: ""})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty name")
 }
 
 func TestRegistryRejectsToolWithEmptyDescription(t *testing.T) {
-	_, err := tools.NewRegistry(badTool{name: "test", description: ""})
+	_, err := pkgtools.NewRegistry(badTool{name: "test", description: ""})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty description")
 }
 
 func TestRegistryRejectsToolWithNilParameters(t *testing.T) {
-	_, err := tools.NewRegistry(badTool{name: "test", description: "desc", parameters: nil})
+	_, err := pkgtools.NewRegistry(badTool{name: "test", description: "desc", parameters: nil})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nil parameters")
 }
@@ -161,7 +162,7 @@ func TestRegistryRejectsToolWithNilParameters(t *testing.T) {
 func TestRegistryRejectsDuplicateToolNames(t *testing.T) {
 	tool1 := echoTool{}
 	tool2 := echoTool{}
-	_, err := tools.NewRegistry(tool1, tool2)
+	_, err := pkgtools.NewRegistry(tool1, tool2)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "duplicate")
 }
@@ -172,8 +173,8 @@ type badTool struct {
 	parameters  json.RawMessage
 }
 
-func (b badTool) Definition() tools.Definition {
-	return tools.Definition{
+func (b badTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
 		Name:        b.name,
 		Description: b.description,
 		Parameters:  b.parameters,

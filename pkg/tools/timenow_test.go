@@ -6,11 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/iamhectordev/hector/modules/tools"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 )
 
 func TestTimeNowDefinition(t *testing.T) {
-	tool, err := tools.NewTimeNow()
+	tool, err := pkgtools.NewTimeNow()
 	require.NoError(t, err)
 
 	def := tool.Definition()
@@ -20,7 +20,7 @@ func TestTimeNowDefinition(t *testing.T) {
 }
 
 func TestTimeNowRun(t *testing.T) {
-	tool, err := tools.NewTimeNow()
+	tool, err := pkgtools.NewTimeNow()
 	require.NoError(t, err)
 
 	output, err := tool.Run(t.Context(), nil)

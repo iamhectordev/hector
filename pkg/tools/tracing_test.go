@@ -32,15 +32,15 @@ func requireSpanAttr(t *testing.T, span sdktrace.ReadOnlySpan, key string) strin
 	return ""
 }
 
-func requireSpanAttrInt(t *testing.T, span sdktrace.ReadOnlySpan, key string) int64 {
+func requireSpanAttrBool(t *testing.T, span sdktrace.ReadOnlySpan, key string) bool {
 	t.Helper()
 	for _, attr := range span.Attributes() {
 		if string(attr.Key) == key {
-			return attr.Value.AsInt64()
+			return attr.Value.AsBool()
 		}
 	}
 	t.Fatalf("missing attr %q on span %q", key, span.Name())
-	return 0
+	return false
 }
 
 func findSpan(t *testing.T, spans []sdktrace.ReadOnlySpan, name string) sdktrace.ReadOnlySpan {

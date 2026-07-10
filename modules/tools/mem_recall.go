@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/iamhectordev/hector/pkg/memory"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
@@ -26,15 +27,15 @@ type MemRecallTool struct {
 
 // NewMemRecall creates a mem_recall tool backed by the given searcher.
 func NewMemRecall(store memorySearcher) (*MemRecallTool, error) {
-	schema, err := SchemaFor[memRecallInput]()
+	schema, err := pkgtools.SchemaFor[memRecallInput]()
 	if err != nil {
 		return nil, err
 	}
 	return &MemRecallTool{store: store, schema: schema}, nil
 }
 
-func (t *MemRecallTool) Definition() Definition {
-	return Definition{
+func (t *MemRecallTool) Definition() pkgtools.Definition {
+	return pkgtools.Definition{
 		Name:        "mem_recall",
 		Description: "Returns relevant facts from org memory matching the query. Use when asked about team context, services, people, or past decisions.",
 		Parameters:  t.schema,
@@ -46,23 +47,23 @@ func (t *MemRecallTool) Run(ctx context.Context, args json.RawMessage) (string, 
 	var input memRecallInput
 	if err = json.Unmarshal(args, &input); err != nil {
 		err = fmt.Errorf("invalid args: %w", err)
-		return Fail(fmt.Sprintf("invalid args: %s", err))
+		return pkgtools.Fail(fmt.Sprintf("invalid args: %s", err))
 	}
 	query := strings.TrimSpace(input.Query)
 	if query == "" {
 		err = fmt.Errorf("query is required")
-		return Fail("query is required")
+		return pkgtools.Fail("query is required")
 	}
 	ctx, span := telem.Trace(ctx, spanMemoryRecall, recallFields(query, 0)...)
 	defer span.End(&err)
 
 	results, err := t.store.Search(ctx, query, 3)
 	if err != nil {
-		return Fail(err.Error())
+		return pkgtools.Fail(err.Error())
 	}
 	span.AddFields(recallFields(query, len(results))...)
 	if len(results) == 0 {
-		return OK("no relevant facts found")
+		return pkgtools.OK("no relevant facts found")
 	}
 
 	var lines []string
@@ -73,5 +74,5 @@ func (t *MemRecallTool) Run(ctx context.Context, args json.RawMessage) (string, 
 		}
 		lines = append(lines, line)
 	}
-	return OK(strings.Join(lines, "\n"))
+	return pkgtools.OK(strings.Join(lines, "\n"))
 }

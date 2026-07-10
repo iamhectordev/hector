@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	internalsearch "github.com/iamhectordev/hector/internal/web/search"
-	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
+	"github.com/iamhectordev/hector/pkg/tools"
 )
 
 type Searcher interface {

@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	internalfetch "github.com/iamhectordev/hector/internal/web/fetch"
-	"github.com/iamhectordev/hector/modules/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
+	"github.com/iamhectordev/hector/pkg/tools"
 )
 
 // Fetcher is the interface for core fetch logic.

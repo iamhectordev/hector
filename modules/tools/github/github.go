@@ -8,11 +8,12 @@ import (
 	gh "github.com/iamhectordev/hector/internal/github"
 	"github.com/iamhectordev/hector/internal/mcp"
 	"github.com/iamhectordev/hector/modules/tools"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
 )
 
 // Register wires GitHub tools into registry. Caller must close the returned closer on shutdown.
-func Register(ctx context.Context, cfg gh.Config, registry *tools.Registry) (io.Closer, error) {
+func Register(ctx context.Context, cfg gh.Config, registry *pkgtools.Registry) (io.Closer, error) {
 	tokens, err := gh.NewTokenProvider(cfg)
 	if err != nil {
 		return nil, err
@@ -36,7 +37,7 @@ func Register(ctx context.Context, cfg gh.Config, registry *tools.Registry) (io.
 	return registerMCP(ctx, cfg, tokens, registry)
 }
 
-func registerMCP(ctx context.Context, cfg gh.Config, tokens gh.TokenProvider, registry *tools.Registry) (io.Closer, error) {
+func registerMCP(ctx context.Context, cfg gh.Config, tokens gh.TokenProvider, registry *pkgtools.Registry) (io.Closer, error) {
 	token, err := tokens.Token(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("github: get token for mcp: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/telem"
 	"github.com/iamhectordev/hector/pkg/waffle"
 )
@@ -11,12 +12,12 @@ import (
 // Module executes registered tools in response to tool call events.
 type Module struct {
 	bus      *waffle.EventBus
-	registry *Registry
+	registry *pkgtools.Registry
 }
 
-func NewModule(bus *waffle.EventBus, registry *Registry) (*Module, error) {
+func NewModule(bus *waffle.EventBus, registry *pkgtools.Registry) (*Module, error) {
 	if registry == nil {
-		return nil, ErrNilRegistry
+		return nil, pkgtools.ErrNilRegistry
 	}
 	m := &Module{
 		bus:      bus,
@@ -44,7 +45,7 @@ func (m *Module) Start(ctx context.Context) error {
 
 func (m *Module) Stop(context.Context) error { return nil }
 
-func (m *Module) Register(tool Tool) error {
+func (m *Module) Register(tool pkgtools.Tool) error {
 	return m.registry.Register(tool)
 }
 

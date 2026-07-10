@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/iamhectordev/hector/modules/agent"
-	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
 	llmtest "github.com/iamhectordev/hector/pkg/llm/testing"
 	"github.com/iamhectordev/hector/pkg/session"

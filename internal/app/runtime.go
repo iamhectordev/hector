@@ -15,9 +15,10 @@ import (
 	emailmodule "github.com/iamhectordev/hector/modules/email"
 	memorymod "github.com/iamhectordev/hector/modules/memory"
 	"github.com/iamhectordev/hector/modules/slack"
-	"github.com/iamhectordev/hector/modules/tools"
+	toolsmod "github.com/iamhectordev/hector/modules/tools"
 	githubtools "github.com/iamhectordev/hector/modules/tools/github"
 	"github.com/iamhectordev/hector/modules/tools/web"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/modules/tui"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
@@ -175,12 +176,12 @@ func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, err
 	}
 }
 
-func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.Tool, memStore *memorysqlite.Store) (*tools.Registry, *tools.Module, error) {
+func (r *Runtime) initTools(	replyHandlers []comms.ReplyHandler, webSearch pkgtools.Tool, memStore *memorysqlite.Store) (*pkgtools.Registry, *toolsmod.Module, error) {
 	replyRouter, err := comms.NewReplyRouter(replyHandlers...)
 	if err != nil {
 		return nil, nil, err
 	}
-	timeNow, err := tools.NewTimeNow()
+	timeNow, err := pkgtools.NewTimeNow()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -192,15 +193,15 @@ func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.
 	if err != nil {
 		return nil, nil, err
 	}
-	memRecall, err := tools.NewMemRecall(memStore)
+	memRecall, err := toolsmod.NewMemRecall(memStore)
 	if err != nil {
 		return nil, nil, err
 	}
-	toolRegistry, err := tools.NewRegistry(replyRouter, timeNow, webFetch, webSearch, memRecall)
+	toolRegistry, err := pkgtools.NewRegistry(replyRouter, timeNow, webFetch, webSearch, memRecall)
 	if err != nil {
 		return nil, nil, err
 	}
-	toolsModule, err := tools.NewModule(r.bus, toolRegistry)
+	toolsModule, err := toolsmod.NewModule(r.bus, toolRegistry)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -210,8 +211,8 @@ func (r *Runtime) initTools(replyHandlers []comms.ReplyHandler, webSearch tools.
 func (r *Runtime) initModules(
 	ctx context.Context,
 	completer llm.Completer,
-	toolRegistry *tools.Registry,
-	toolsModule *tools.Module,
+	toolRegistry *pkgtools.Registry,
+	toolsModule *toolsmod.Module,
 	surfaces []supervisor.Module,
 	memStore *memorysqlite.Store,
 ) ([]supervisor.Module, error) {
@@ -323,7 +324,7 @@ func (r *Runtime) initMemoryStore() (*memorysqlite.Store, error) {
 	return memorysqlite.NewStore(r.db, memorysqlite.WithEmbedder(embedder)), nil
 }
 
-func newWebSearchTool(cfg search.Config) (tools.Tool, error) {
+func newWebSearchTool(cfg search.Config) (pkgtools.Tool, error) {
 	if !cfg.Enabled() {
 		return nil, nil
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	gh "github.com/iamhectordev/hector/internal/github"
-	"github.com/iamhectordev/hector/modules/tools"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 )
 
 type toolsClient interface {
@@ -47,8 +47,8 @@ type blockedByRelationshipInput struct {
 	BlockedIssueNumber  int    `json:"blocked_issue_number" jsonschema:"issue number that is blocked"`
 }
 
-func NewGetIssueTool(client toolsClient) (tools.Tool, error) {
-	return tools.New(
+func NewGetIssueTool(client toolsClient) (pkgtools.Tool, error) {
+	return pkgtools.New(
 		"get_issue",
 		"Returns one GitHub issue with blocked_by and blocks arrays. Requires repo as owner/name.",
 		func(ctx context.Context, in getIssueInput) (gh.IssueWithBlocking, error) {
@@ -64,8 +64,8 @@ func NewGetIssueTool(client toolsClient) (tools.Tool, error) {
 	)
 }
 
-func NewCreateMilestoneTool(client toolsClient) (tools.Tool, error) {
-	return tools.New(
+func NewCreateMilestoneTool(client toolsClient) (pkgtools.Tool, error) {
+	return pkgtools.New(
 		"create_milestone",
 		"Creates a GitHub milestone and returns the milestone JSON. Requires repo as owner/name.",
 		func(ctx context.Context, in createMilestoneInput) (gh.Milestone, error) {
@@ -82,8 +82,8 @@ func NewCreateMilestoneTool(client toolsClient) (tools.Tool, error) {
 	)
 }
 
-func NewListMilestonesTool(client toolsClient) (tools.Tool, error) {
-	return tools.New(
+func NewListMilestonesTool(client toolsClient) (pkgtools.Tool, error) {
+	return pkgtools.New(
 		"list_milestones",
 		"Returns GitHub milestones for a repository. Requires repo as owner/name; state may be open, closed, or all.",
 		func(ctx context.Context, in listMilestonesInput) ([]gh.Milestone, error) {
@@ -100,8 +100,8 @@ func NewListMilestonesTool(client toolsClient) (tools.Tool, error) {
 	)
 }
 
-func NewUpdateMilestoneTool(client toolsClient) (tools.Tool, error) {
-	return tools.New(
+func NewUpdateMilestoneTool(client toolsClient) (pkgtools.Tool, error) {
+	return pkgtools.New(
 		"update_milestone",
 		"Updates a GitHub milestone and returns the milestone JSON. Requires repo as owner/name.",
 		func(ctx context.Context, in updateMilestoneInput) (gh.Milestone, error) {
@@ -121,8 +121,8 @@ func NewUpdateMilestoneTool(client toolsClient) (tools.Tool, error) {
 	)
 }
 
-func NewCreateBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) {
-	return tools.New(
+func NewCreateBlockedByRelationshipTool(client toolsClient) (pkgtools.Tool, error) {
+	return pkgtools.New(
 		"create_blocked_by_relationship",
 		"Creates a GitHub blocked-by relationship and returns the updated blocked issue JSON. Requires repo as owner/name.",
 		func(ctx context.Context, in blockedByRelationshipInput) (gh.IssueWithBlocking, error) {
@@ -135,8 +135,8 @@ func NewCreateBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) 
 	)
 }
 
-func NewRemoveBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) {
-	return tools.New(
+func NewRemoveBlockedByRelationshipTool(client toolsClient) (pkgtools.Tool, error) {
+	return pkgtools.New(
 		"remove_blocked_by_relationship",
 		"Removes a GitHub blocked-by relationship and returns the updated blocked issue JSON. Requires repo as owner/name.",
 		func(ctx context.Context, in blockedByRelationshipInput) (gh.IssueWithBlocking, error) {
@@ -150,11 +150,11 @@ func NewRemoveBlockedByRelationshipTool(client toolsClient) (tools.Tool, error) 
 }
 
 // NewTools returns all GitHub tools. Returns an error if client is nil.
-func NewTools(client toolsClient) ([]tools.Tool, error) {
+func NewTools(client toolsClient) ([]pkgtools.Tool, error) {
 	if client == nil {
 		return nil, fmt.Errorf("github: tools client is required")
 	}
-	constructors := []func(toolsClient) (tools.Tool, error){
+	constructors := []func(toolsClient) (pkgtools.Tool, error){
 		NewGetIssueTool,
 		NewCreateMilestoneTool,
 		NewListMilestonesTool,
@@ -162,7 +162,7 @@ func NewTools(client toolsClient) ([]tools.Tool, error) {
 		NewCreateBlockedByRelationshipTool,
 		NewRemoveBlockedByRelationshipTool,
 	}
-	out := make([]tools.Tool, 0, len(constructors))
+	out := make([]pkgtools.Tool, 0, len(constructors))
 	for _, constructor := range constructors {
 		tool, err := constructor(client)
 		if err != nil {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/iamhectordev/hector/modules/tools"
+	pkgtools "github.com/iamhectordev/hector/pkg/tools"
 )
 
 type addInput struct {
@@ -17,7 +17,7 @@ type addInput struct {
 }
 
 func TestTypedToolNew(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"math_add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -36,7 +36,7 @@ func TestTypedToolNew(t *testing.T) {
 }
 
 func TestTypedToolRunOK(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"math_add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -55,7 +55,7 @@ func TestTypedToolRunOK(t *testing.T) {
 }
 
 func TestTypedToolRunError(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"math_add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -75,7 +75,7 @@ func TestTypedToolRunError(t *testing.T) {
 }
 
 func TestTypedToolRunInvalidArgs(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"math_add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) {
@@ -94,7 +94,7 @@ func TestTypedToolRunInvalidArgs(t *testing.T) {
 }
 
 func TestTypedToolEmptyInputSchemaHasProperties(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"no_input",
 		"A tool with no inputs.",
 		func(_ context.Context, _ struct{}) (string, error) { return "ok", nil },
@@ -108,25 +108,25 @@ func TestTypedToolEmptyInputSchemaHasProperties(t *testing.T) {
 }
 
 func TestTypedToolSatisfiesTool(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"math_add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) { return 0, nil },
 	)
 	require.NoError(t, err)
 
-	var _ tools.Tool = tool
+	var _ pkgtools.Tool = tool
 }
 
 func TestTypedToolRegistersInRegistry(t *testing.T) {
-	tool, err := tools.New(
+	tool, err := pkgtools.New(
 		"math_add",
 		"Returns the sum of two integers.",
 		func(_ context.Context, in addInput) (int, error) { return in.A + in.B, nil },
 	)
 	require.NoError(t, err)
 
-	registry, err := tools.NewRegistry(tool)
+	registry, err := pkgtools.NewRegistry(tool)
 	require.NoError(t, err)
 
 	out, err := registry.Run(t.Context(), "math_add", json.RawMessage(`{"a":2,"b":3}`))

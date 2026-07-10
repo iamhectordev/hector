@@ -13,7 +13,7 @@ import (
 	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
 	"github.com/iamhectordev/hector/modules/agent"
 	slackmodule "github.com/iamhectordev/hector/modules/slack"
-	"github.com/iamhectordev/hector/modules/tools"
+	"github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
 	"github.com/iamhectordev/hector/pkg/llm/schema"
