@@ -7,43 +7,65 @@
 - Each module exposes a `Module` interface (`Name`, `Start(ctx)`, `Stop(ctx)`) and is registered at startup
 - Config controls which modules run and how — CLI flags, YAML, or env vars
 - SQLite for local development, Postgres for production — same interface, swapped by config
-- `services/` for bounded contexts, each with a compiler-enforced `internal/`
-- Root `internal/` for shared infrastructure only: logger, config, db, tracing, events, CLI — no business logic
+- Root `internal/` for app wiring and shared infrastructure only — no business logic
+- `modules/` for core supervised runtime units (agent, tools executor, memory, email, TUI)
+- `pkg/` for the public library surface (tools contract, supervisor, waffle, comms, LLM, telem, …)
+- `integrations/` for facet-based capability units — one package per external vendor (GitHub, Slack, …)
 
 ```
-services/
-  agent/
-    module.go           ← implements Module
-    agent.go            ← public API + ports (interfaces this service needs)
-    internal/
-      session.go
-      session_store.go
-      ...
-  memory/
-    module.go
-    memory.go
-    internal/
-      entity.go
-      entity_store.go
-      ...
-internal/
-  server/               ← Module interface, lifecycle
-  config/               ← env + yaml + flags
-  logger/               ← slog setup
-  tracing/              ← otel setup
-  db/                   ← connection + migration runner
-  events/               ← shared event types
-  cli/                  ← urfave/cli v3 app and commands
 cmd/
   hector/
     main.go             ← init context, logger, tracer → run modules
+internal/
+  app/                  ← runtime wiring: builds []Module from config, wires deps
+  cli/                  ← urfave/cli v3 app and commands (chat, serve, events)
+  db/                   ← connection + migration runner
+  tracing/              ← otel setup
+  email/                ← shared email infrastructure
+  web/                  ← HTTP helpers
+  embed/                ← embedded assets
+  ulid/                 ← ID generation
+modules/
+  agent/                ← supervisor.Module: LLM loop, message handling
+  tools/                ← supervisor.Module: tool registry, bus consumer, MCP adapter
+  memory/               ← supervisor.Module: conversation memory
+  email/                ← supervisor.Module: email sending
+  tui/                  ← supervisor.Module: terminal UI
+pkg/
+  tools/                ← tool contract: Tool, Definition, Registry, SchemaFor, typed helper
+  supervisor/           ← Module interface, lifecycle manager
+  comms/                ← communication types: Message, ReplyHandler, ReplyRouter
+  llm/                  ← LLM client abstraction
+  waffle/               ← event bus and workflow primitives
+  telem/                ← telemetry and tracing helpers
+  session/              ← session types
+  memory/               ← memory store contract
+  mcp/                  ← MCP (Model Context Protocol) adapter
+  migrations/           ← database migration files
+  safehttp/             ← safe HTTP utilities
+integrations/
+  integration.go        ← facet contracts: Integration, ToolProvider, EventSource, Surface, Initializer
+  host.go               ← generic Host adapter: turns any Integration into a supervisor.Module
+  github/               ← GitHub integration (tool provider, event source)
+  slack/                ← Slack integration (event source, surface)
 ```
+
+### Modules and integrations
+
+A **module** is a runtime unit supervised by `pkg/supervisor`. Core modules are hand-written and live under `modules/`. An **integration** is a capability unit exposing orthogonal facets — tools, event source, surface — and lives under `integrations/`. The generic `Host` adapter (`integrations/host.go`) adapts an integration into a supervisor module, bridging the two layers.
+
+Grouping modules and integrations into processes is a deployment decision. The codebase is structured as a modular monolith today, but the boundary preserves the path to split services when needed.
+
+### Import discipline
+
+- Integrations import only `pkg/...` (and stdlib / vendor SDKs). They never import `internal/`, `modules/`, or each other.
+- Modules never import integrations — except where explicitly flagged as debt: the agent module imports `integrations/slack` for Slack-shaped event handling (see design doc "Known deferred issues").
 
 ## DDD and interfaces
 
 - Ports (interfaces) are defined by the consumer and live next to the consumer
 - Implementations import the interface only for the compiler assertion: `var _ agent.LLMClient = (*Client)(nil)`
-- Services never import each other's internals — cross-service communication through declared interfaces only
+- Modules never import each other's internals — cross-module communication through declared interfaces only
 - In-process: interface implemented directly. Split service: same interface, gRPC client behind it
 - `main` wires everything — injects implementations into consumers at startup
 
@@ -78,6 +100,6 @@ cmd/
 
 - **Crash safety** — no work is ever lost. An effect must be persisted before a worker picks it up
 - **Auditability** — every action, tool call, approval, and policy evaluation is logged and traceable
-- **Modularity** — services never reach into each other's internals
+- **Modularity** — modules never reach into each other's internals
 - **Tenant isolation** — no data, memory, or context crosses tenant boundaries under any circumstances
 - **Security** — credentials never appear in logs, events, or model context
