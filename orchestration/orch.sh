@@ -135,8 +135,10 @@ Process:
 3. Implement the spec. No scope creep: only what the spec requires, only in the files/packages it scopes. If the spec says to stop and flag something, stop and report it in your final message instead of improvising.
 4. Add every test the spec lists. Run 'mise run test' and 'mise run lint' and fix failures until both pass cleanly.
 5. Commit all work on the current branch in small semantic commits (scope where relevant). Do not push. Leave the working tree clean.
-6. Evidence, not verdicts: in your final message, paste the last 5 lines of the real output of each verification command you ran (no cached results — use -count=1 if you invoke go test directly). A PASS claim without pasted output is a failure.
-7. End your final message with exactly one line: 'RESULT: PASS <one-line summary>' or 'RESULT: FAIL <what blocked you>'.
+6. Self-review: run 'git diff main...HEAD --stat', re-read the spec's Non-goals, and revert any hunk the spec did not order. In your final message state what you reverted, or 'reverted: none'. Comments and doc lines in files you move or edit are part of the code — never drop or reword them unless the spec orders it.
+7. Evidence, not verdicts. In your final message paste the real output (no cached results — use -count=1 if you invoke go test directly) of: the last 5 lines of each verification command; 'git status --porcelain' (must print nothing); 'git log --oneline -3 main'; 'git merge-base --is-ancestor main HEAD; echo \$?' (must print 0). If the spec has a '## Proof' section, also paste the output of each command it lists. Never state a fact about repo state or about code without the command output or open file that proves it. A claim without pasted output is a failure.
+8. If gate or verification failures look unrelated to your change, run 'golangci-lint cache clean' once and retry before investigating further.
+9. End your final message with exactly one line: 'RESULT: PASS <one-line summary>' or 'RESULT: FAIL <what blocked you>'.
 EOF
 }
 

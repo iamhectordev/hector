@@ -20,6 +20,20 @@ covers the loop-merge if 03 hasn't landed).
 Statuses: todo → running → review (worker done, awaiting verify/feedback) →
 integrated | blocked.
 
+## Conventions (post-int1 retro, 2026-07-10)
+
+- Specs may include a `## Proof` section: commands whose pasted real output is
+  part of the worker's exit criteria. Move slices should demand
+  `git diff --find-renames --stat main -- <moved paths>` showing 100% rename
+  similarity for every file the spec doesn't explicitly change.
+- The worker prompt demands repo-state evidence before the RESULT line
+  (clean porcelain, main ancestry check) and a self-diff review against the
+  spec's Non-goals. Rationale: every int1 rework traced to an unproven claim —
+  tidied-away comments during moves, a stale-base rebase reported as clean,
+  docs annotations written from memory instead of from the code.
+- Per-slice extra checks belong in the gate (spawn's 4th arg), not in prose.
+  A reusable move-fidelity gate script is deferred until a move slice needs it.
+
 ## Log
 
 - 2026-07-10: Design accepted (001-integration-facets), milestone sliced into 5
