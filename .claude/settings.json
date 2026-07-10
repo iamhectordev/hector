@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(go *)",
+      "Bash(mise run *)",
+      "Bash(orchestration/orch.sh status)",
+      "mcp__plugin_context7_context7__query-docs"
+    ],
+    "deny": [
+      "Bash(git push*)",
+      "Bash(git reset*)",
+      "Bash(git clean*)",
+      "Bash(git branch -D*)",
+      "Bash(git branch --delete*)",
+      "Bash(git filter-branch*)",
+      "Bash(git gc*)",
+      "Bash(go run*)",
+      "Bash(go get*)",
+      "Bash(go install*)",
+      "Bash(mise run run*)",
+      "Bash(mise run build*)"
+    ]
+  }
+}
