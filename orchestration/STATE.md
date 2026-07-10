@@ -18,7 +18,7 @@ Session IDs live in `.worktrees/logs/<issue>.ndjson` (`orch.sh session <issue>`)
 
 | Issue | Spec | Depends | Status | Notes |
 |---|---|---|---|---|
-| int2-01 | docs/specs/int2/01-integrations-config-nesting.md | — | running | breaking yaml: slack/github nest under integrations: |
+| int2-01 | docs/specs/int2/01-integrations-config-nesting.md | — | integrated | gate pass attempt 1; first slice under hardened prompt + ## Proof |
 
 int1-03 and int1-04 can run in parallel once int1-02 is integrated (04's spec
 covers the loop-merge if 03 hasn't landed).
