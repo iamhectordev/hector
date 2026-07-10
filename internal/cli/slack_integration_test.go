@@ -10,9 +10,10 @@ import (
 	"time"
 
 	dbsqlite "github.com/iamhectordev/hector/internal/db/sqlite"
-	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
+	"github.com/iamhectordev/hector/integrations"
+	slackmock "github.com/iamhectordev/hector/integrations/slack/mock"
+	slackintegration "github.com/iamhectordev/hector/integrations/slack"
 	"github.com/iamhectordev/hector/modules/agent"
-	slackmodule "github.com/iamhectordev/hector/modules/slack"
 	"github.com/iamhectordev/hector/pkg/tools"
 	"github.com/iamhectordev/hector/pkg/comms"
 	"github.com/iamhectordev/hector/pkg/llm"
@@ -39,10 +40,10 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
+	slackMod, err := slackintegration.New(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
-	replyRouter, err := comms.NewReplyRouter(slackMod.NewReplyHandler())
+	replyRouter, err := comms.NewReplyRouter(slackMod.ReplyHandler())
 	require.NoError(t, err)
 	registry, err := tools.NewRegistry(replyRouter)
 	require.NoError(t, err)
@@ -56,12 +57,15 @@ func TestSlack_DMMessage_RepliesInThread(t *testing.T) {
 		agent.WithTools(registry),
 	)
 
+	slackHost, err := integrations.NewHost(slackMod)
+	require.NoError(t, err)
+
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, loop,
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(noopSessionStore{}),
 		),
-		slackMod,
+		slackHost,
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
@@ -153,14 +157,17 @@ func TestSlack_DMMessage_TraceShape(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
+	slackMod, err := slackintegration.New(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
-	replyRouter, err := comms.NewReplyRouter(slackMod.NewReplyHandler())
+	replyRouter, err := comms.NewReplyRouter(slackMod.ReplyHandler())
 	require.NoError(t, err)
 	registry, err := tools.NewRegistry(replyRouter)
 	require.NoError(t, err)
 	completer, err := llm.New(t.Context(), &llm.Config{DefaultBackend: llm.BackendEcho})
+	require.NoError(t, err)
+
+	slackHost, err := integrations.NewHost(slackMod)
 	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
@@ -168,7 +175,7 @@ func TestSlack_DMMessage_TraceShape(t *testing.T) {
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(noopSessionStore{}),
 		),
-		slackMod,
+		slackHost,
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 	go sv.Run(ctx)
@@ -242,18 +249,21 @@ func TestSlack_DMMessage_ReactionFailureStillReachesAgent(t *testing.T) {
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
+	slackMod, err := slackintegration.New(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
 	completer := newCaptureCompleter()
 	loop := agent.NewLoop(completer)
+
+	slackHost, err := integrations.NewHost(slackMod)
+	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, loop,
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(noopSessionStore{}),
 		),
-		slackMod,
+		slackHost,
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
@@ -624,18 +634,21 @@ func newSlackAgentCapture(t *testing.T, ctx context.Context) (*slackmock.Server,
 	bus, err := waffle.NewEventBus(waffle.WithWorkers(2))
 	require.NoError(t, err)
 
-	slackMod, err := slackmodule.NewModule(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
+	slackMod, err := slackintegration.New(bus, testSlackConfig(t, srv.BaseURL()+"/api/"))
 	require.NoError(t, err)
 
 	completer := newCaptureCompleter()
 	loop := agent.NewLoop(completer)
+
+	slackHost, err := integrations.NewHost(slackMod)
+	require.NoError(t, err)
 
 	sv, err := supervisor.New([]supervisor.Module{
 		agent.NewModule(bus, loop,
 			agent.WithBaseSystem(agent.SystemPrompt),
 			agent.WithSessionStore(noopSessionStore{}),
 		),
-		slackMod,
+		slackHost,
 	}, supervisor.WithPostInitHook("bus.start", bus.Start))
 	require.NoError(t, err)
 
@@ -740,9 +753,9 @@ func requireNoSpanAttrValue(t *testing.T, spans []sdktrace.ReadOnlySpan, forbidd
 	}
 }
 
-func testSlackConfig(t *testing.T, apiURL string) *slackmodule.Config {
+func testSlackConfig(t *testing.T, apiURL string) *slackintegration.Config {
 	t.Helper()
-	cfg := &slackmodule.Config{APIURL: apiURL}
+	cfg := &slackintegration.Config{Enabled: true, APIURL: apiURL}
 	require.NoError(t, cfg.AppToken.UnmarshalText([]byte("xapp-fake")))
 	require.NoError(t, cfg.BotToken.UnmarshalText([]byte("xoxb-fake")))
 	return cfg

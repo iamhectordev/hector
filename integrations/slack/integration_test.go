@@ -8,9 +8,8 @@ import (
 
 	slackgo "github.com/slack-go/slack"
 
-	islack "github.com/iamhectordev/hector/internal/slack"
-	"github.com/iamhectordev/hector/internal/slack/mock"
-	module "github.com/iamhectordev/hector/modules/slack"
+	slack "github.com/iamhectordev/hector/integrations/slack"
+	"github.com/iamhectordev/hector/integrations/slack/mock"
 	"github.com/iamhectordev/hector/pkg/waffle"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
@@ -26,8 +25,8 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -38,7 +37,7 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -51,7 +50,7 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{
@@ -83,7 +82,7 @@ func TestModule_Start_DMPublishesMessageReceived(t *testing.T) {
 	select {
 	case data := <-got:
 		require.Equal(t, "D111", data.Channel.ID)
-		require.Equal(t, islack.ChannelTypeDM, data.Channel.Type)
+		require.Equal(t, slack.ChannelTypeDM, data.Channel.Type)
 		require.Equal(t, "dm-test", data.Channel.Name)
 		require.Equal(t, 2, data.Channel.MemberCount)
 		require.Equal(t, "U222", data.Sender.ID)
@@ -107,8 +106,8 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -119,7 +118,7 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -132,7 +131,7 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{"ok": true, "user": map[string]any{"id": "U222"}})
@@ -148,7 +147,7 @@ func TestModule_Start_ChannelMessageReceived(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, islack.ChannelTypeChannel, data.Channel.Type)
+		require.Equal(t, slack.ChannelTypeChannel, data.Channel.Type)
 		require.Equal(t, "public-channel", data.Channel.Name)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
@@ -168,8 +167,8 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -180,7 +179,7 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -193,7 +192,7 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{
@@ -216,7 +215,7 @@ func TestModule_Start_EnrichmentFailureIgnores(t *testing.T) {
 	select {
 	case data := <-got:
 		require.Equal(t, "D111", data.Channel.ID)
-		require.Equal(t, islack.ChannelTypeDM, data.Channel.Type)
+		require.Equal(t, slack.ChannelTypeDM, data.Channel.Type)
 		require.Equal(t, "", data.Channel.Name)
 		require.Equal(t, 0, data.Channel.MemberCount)
 		require.Equal(t, "U222", data.Sender.ID)
@@ -240,8 +239,8 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -252,7 +251,7 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -265,7 +264,7 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{"ok": true, "user": map[string]any{"id": "U222", "profile": map[string]any{"display_name": "Test User"}}})
@@ -281,7 +280,7 @@ func TestModule_Start_GroupDMPublishesMessageReceived(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, islack.ChannelTypeGroupDM, data.Channel.Type)
+		require.Equal(t, slack.ChannelTypeGroupDM, data.Channel.Type)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
 	}
@@ -300,8 +299,8 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -312,7 +311,7 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -325,7 +324,7 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{"ok": true, "user": map[string]any{"id": "U222"}})
@@ -341,7 +340,7 @@ func TestModule_Start_UnknownChannelTypePassesThrough(t *testing.T) {
 
 	select {
 	case data := <-got:
-		require.Equal(t, islack.ChannelType("bizarre_type"), data.Channel.Type)
+		require.Equal(t, slack.ChannelType("bizarre_type"), data.Channel.Type)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message event")
 	}
@@ -360,8 +359,8 @@ func TestModule_Start_AllowListPassesListedUser(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -372,7 +371,7 @@ func TestModule_Start_AllowListPassesListedUser(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", []string{"U222"}))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", []string{"U222"}))
 		if err != nil {
 			done <- err
 			return
@@ -385,7 +384,7 @@ func TestModule_Start_AllowListPassesListedUser(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{
@@ -430,8 +429,8 @@ func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageReceivedData, 1)
-	err = waffle.On(bus, islack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageReceivedData]) error {
+	got := make(chan slack.MessageReceivedData, 1)
+	err = waffle.On(bus, slack.MessageReceived).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageReceivedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -442,7 +441,7 @@ func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", []string{"U222"}))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", []string{"U222"}))
 		if err != nil {
 			done <- err
 			return
@@ -455,7 +454,7 @@ func TestModule_Start_AllowListBlocksUnlistedUser(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	// Push from blocked user first — no enrichment expected (filter fires before enrichment).
@@ -509,8 +508,8 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 		require.NoError(t, bus.Shutdown(context.Background()))
 	})
 
-	got := make(chan islack.MessageUpdatedData, 1)
-	err = waffle.On(bus, islack.MessageUpdated).Handle("test.capture", func(_ context.Context, e waffle.Event[islack.MessageUpdatedData]) error {
+	got := make(chan slack.MessageUpdatedData, 1)
+	err = waffle.On(bus, slack.MessageUpdated).Handle("test.capture", func(_ context.Context, e waffle.Event[slack.MessageUpdatedData]) error {
 		got <- e.Data()
 		return nil
 	})
@@ -521,7 +520,7 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		m, err := module.NewModule(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
+		m, err := slack.New(bus, testConfig(t, srv.BaseURL()+"/api/", nil))
 		if err != nil {
 			done <- err
 			return
@@ -534,7 +533,7 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 			done <- err
 			return
 		}
-		done <- m.Start(ctx)
+		done <- m.Run(ctx)
 	}()
 
 	srv.ExpectWithResponse("users.info", map[string]any{
@@ -598,7 +597,7 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 		require.Equal(t, "Bob", data.Forwards[0].Sender.Name)
 		require.Equal(t, "Original message", data.Forwards[0].Text)
 		require.Equal(t, "C999", data.Forwards[0].Channel.ID)
-		require.Equal(t, islack.ChannelTypeDM, data.Channel.Type)
+		require.Equal(t, slack.ChannelTypeDM, data.Channel.Type)
 		require.NotZero(t, data.UpdatedAt)
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for slack message_updated event")
@@ -608,9 +607,10 @@ func TestModule_Start_MessageChangedPublishesMessageUpdated(t *testing.T) {
 	require.NoError(t, <-done)
 }
 
-func testConfig(t *testing.T, apiURL string, allowUsers []string) *module.Config {
+func testConfig(t *testing.T, apiURL string, allowUsers []string) *slack.Config {
 	t.Helper()
-	cfg := &module.Config{
+	cfg := &slack.Config{
+		Enabled:    true,
 		APIURL:     apiURL,
 		AllowUsers: allowUsers,
 	}

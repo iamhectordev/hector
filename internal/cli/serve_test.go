@@ -9,7 +9,7 @@ import (
 	"github.com/doron-cohen/klee"
 	appconfig "github.com/iamhectordev/hector/internal/app"
 	"github.com/iamhectordev/hector/internal/cli"
-	slackmock "github.com/iamhectordev/hector/internal/slack/mock"
+	slackmock "github.com/iamhectordev/hector/integrations/slack/mock"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/stretchr/testify/require"
 )
@@ -26,6 +26,8 @@ func TestServe_IntegrationWithSlackMock(t *testing.T) {
 	t.Setenv("HECTOR_DB_PATH", dbPath)
 	t.Setenv("LLM_DEFAULT_BACKEND", "echo")
 	t.Setenv("HECTOR_LOG_LEVEL", "debug")
+	t.Setenv("HECTOR_SLACK_ENABLED", "true")
+	t.Setenv("SLACK_ENABLED", "true")
 	t.Setenv("HECTOR_SLACK_API_URL", srv.BaseURL()+"/api/")
 	t.Setenv("HECTOR_SLACK_APP_TOKEN", "xapp-fake")
 	t.Setenv("HECTOR_SLACK_BOT_TOKEN", "xoxb-fake")
