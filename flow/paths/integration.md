@@ -15,6 +15,9 @@ facet-based `Integration` and supervised via the generic `Host` adapter.
 - Integrations import only `pkg/...` (and stdlib / vendor SDKs) — never
   `internal/`, never `modules/`, never each other.
 - Dependencies (bus, config) arrive by constructor injection.
+- Integration config lives under `integrations.<name>` in app config; the
+  sub-block names `tools`, `events`, and `auth` are reserved for future shared
+  conventions — vendor-specific config must not use those names.
 
 ## Facets
 

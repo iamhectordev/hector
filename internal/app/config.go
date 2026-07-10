@@ -13,16 +13,21 @@ import (
 	"github.com/iamhectordev/hector/pkg/memory"
 )
 
+// IntegrationsConfig groups all integration configs under a single `integrations:` block.
+type IntegrationsConfig struct {
+	Slack  slack.Config `yaml:"slack"`
+	GitHub gh.Config    `yaml:"github"`
+}
+
 // Config is the typed application config loaded by klee.
 type Config struct {
 	kleelog.Config `yaml:"log"`
-	DB             dbsqlite.Config `yaml:"db"`
-	LLM            llm.Config      `yaml:"llm"`
-	Agent          agent.Config    `yaml:"agent"`
-	Memory         memory.Config   `yaml:"memory"`
-	Tracing        tracing.Config  `yaml:"tracing"`
-	WebSearch      search.Config   `yaml:"web_search"`
-	GitHub         gh.Config       `yaml:"github"`
-	Email          email.Config    `yaml:"email"`
-	Slack          slack.Config    `yaml:"slack"`
+	DB             dbsqlite.Config    `yaml:"db"`
+	LLM            llm.Config         `yaml:"llm"`
+	Agent          agent.Config       `yaml:"agent"`
+	Memory         memory.Config      `yaml:"memory"`
+	Tracing        tracing.Config     `yaml:"tracing"`
+	WebSearch      search.Config      `yaml:"web_search"`
+	Email          email.Config       `yaml:"email"`
+	Integrations   IntegrationsConfig `yaml:"integrations"`
 }

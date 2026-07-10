@@ -183,16 +183,16 @@ func (r *Runtime) initSurfaces() ([]supervisor.Module, []comms.ReplyHandler, err
 func (r *Runtime) buildIntegrations(ctx context.Context) ([]integrations.Integration, error) {
 	var integs []integrations.Integration
 
-	if r.cfg.Slack.Enabled {
-		slk, err := slackintegration.New(r.bus, &r.cfg.Slack)
+	if r.cfg.Integrations.Slack.Enabled {
+		slk, err := slackintegration.New(r.bus, &r.cfg.Integrations.Slack)
 		if err != nil {
 			return nil, err
 		}
 		integs = append(integs, slk)
 	}
 
-	if r.cfg.GitHub.Enabled {
-		gh, err := githubpkg.New(ctx, r.cfg.GitHub)
+	if r.cfg.Integrations.GitHub.Enabled {
+		gh, err := githubpkg.New(ctx, r.cfg.Integrations.GitHub)
 		if err != nil {
 			return nil, err
 		}

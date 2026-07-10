@@ -94,12 +94,14 @@ func TestInitIntegrationsRegistersGitHubToolsWhenEnabled(t *testing.T) {
 
 	runtime := &Runtime{
 		cfg: &Config{
-			GitHub: githubpkg.Config{
-				Enabled:        true,
-				AppID:          123,
-				InstallationID: 456,
-				PrivateKeyPath: privateKeyPath,
-				APIURL:         server.URL,
+			Integrations: IntegrationsConfig{
+				GitHub: githubpkg.Config{
+					Enabled:        true,
+					AppID:          123,
+					InstallationID: 456,
+					PrivateKeyPath: privateKeyPath,
+					APIURL:         server.URL,
+				},
 			},
 		},
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -135,7 +137,9 @@ func TestInitIntegrationsSkipsGitHubWhenDisabled(t *testing.T) {
 
 	runtime := &Runtime{
 		cfg: &Config{
-			GitHub: githubpkg.Config{Enabled: false},
+			Integrations: IntegrationsConfig{
+				GitHub: githubpkg.Config{Enabled: false},
+			},
 		},
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
