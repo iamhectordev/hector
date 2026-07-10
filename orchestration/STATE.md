@@ -8,9 +8,9 @@ Session IDs live in `.worktrees/logs/<issue>.ndjson` (`orch.sh session <issue>`)
 |---|---|---|---|---|
 | int1-01 | docs/specs/int1/01-tools-to-pkg.md | — | integrated | gate pass attempt 1; pure renames, reviewed diff |
 | int1-02 | docs/specs/int1/02-integration-contracts.md | int1-01 | integrated | gate pass attempt 1; contracts match design 1:1 |
-| int1-03 | docs/specs/int1/03-github-integration.md | int1-02 | running | includes internal/mcp → pkg/mcp move |
+| int1-03 | docs/specs/int1/03-github-integration.md | int1-02 | integrated | 2 rework rounds: stale-base rebase (false PASS claim), then clean --onto rebase merging slack+github wiring |
 | int1-04 | docs/specs/int1/04-slack-integration.md | int1-02 | integrated | 1 rework round: worker stripped comments + mock logic during move; restored, re-verified |
-| int1-05 | docs/specs/int1/05-architecture-docs.md | int1-03, int1-04 | todo | docs only |
+| int1-05 | docs/specs/int1/05-architecture-docs.md | int1-03, int1-04 | running | docs only |
 
 int1-03 and int1-04 can run in parallel once int1-02 is integrated (04's spec
 covers the loop-merge if 03 hasn't landed).
