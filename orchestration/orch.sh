@@ -25,12 +25,52 @@ BRANCH_PREFIX="${ORCH_BRANCH_PREFIX:-int1}"
 DEFAULT_GATE="mise run test && mise run lint"
 
 GATE_MAX_ATTEMPTS=3
+STALL_SECS=600   # kill a worker that produces no output for this long
 
 wt() { echo "$WT_DIR/$1"; }
 branch_of() { echo "$BRANCH_PREFIX/$1"; }
 log_of() { echo "$LOG_DIR/$1.ndjson"; }
 gate_cmd_of() {
   if [ -f "$LOG_DIR/$1.gate" ]; then cat "$LOG_DIR/$1.gate"; else echo "$DEFAULT_GATE"; fi
+}
+
+# Run an opencode worker with a stall watchdog: if the event log stops
+# growing for STALL_SECS the client is killed and retried once (opencode
+# clients occasionally hang at startup; sessions persist, so this is safe).
+# Usage: watched_run <issue> <prompt> [session-id]
+watched_run() {
+  local issue="$1" prompt="$2" sid="${3:-}" log pid attempt size last_size last_change now stalled
+  log="$(log_of "$issue")"
+  for attempt in 1 2; do
+    if [ -n "$sid" ]; then
+      (cd "$(wt "$issue")" && exec opencode run -s "$sid" "$prompt" --model "$MODEL" --format json) >>"$log" 2>>"$LOG_DIR/$issue.err" &
+    else
+      (cd "$(wt "$issue")" && exec opencode run "$prompt" --model "$MODEL" --format json) >>"$log" 2>>"$LOG_DIR/$issue.err" &
+    fi
+    pid=$!
+    last_size="$(wc -c <"$log" 2>/dev/null || echo 0)"
+    last_change="$(date +%s)"
+    stalled=0
+    while kill -0 "$pid" 2>/dev/null; do
+      sleep 15
+      size="$(wc -c <"$log" 2>/dev/null || echo 0)"
+      now="$(date +%s)"
+      [ "$size" != "$last_size" ] && { last_size="$size"; last_change="$now"; }
+      if [ $((now - last_change)) -ge "$STALL_SECS" ]; then
+        echo "[orch] $issue: STALLED (${STALL_SECS}s silent) — killing client (attempt $attempt)"
+        kill "$pid" 2>/dev/null
+        stalled=1
+        break
+      fi
+    done
+    wait "$pid" 2>/dev/null || true
+    [ "$stalled" -eq 0 ] && return 0
+    # Retry: resume the session if one was created, else rerun fresh.
+    sid="$(session_of "$issue" 2>/dev/null || true)"
+    [ -n "$sid" ] && prompt="You were interrupted. Continue the task per your original instructions; check what is already committed before redoing work."
+  done
+  echo "[orch] $issue: still stalled after retry — orchestrator attention needed"
+  return 1
 }
 
 # Run the issue's gate once; append decision + output tail to the gate log.
@@ -59,13 +99,12 @@ gate_loop() {
     if [ "$attempt" -lt "$GATE_MAX_ATTEMPTS" ]; then
       echo "[orch] $issue: GATE FAIL (attempt $attempt) — feeding output back to worker"
       sid="$(session_of "$issue")"
-      (cd "$dir" && opencode run -s "$sid" "The verification gate failed; your work is not done. Gate command: $(gate_cmd_of "$issue")
+      watched_run "$issue" "The verification gate failed; your work is not done. Gate command: $(gate_cmd_of "$issue")
 
 Last 30 lines of real output:
 $(tail -n 30 "$LOG_DIR/$issue.gate-out.tmp")
 
-Fix the failures (stay within your spec's scope), commit, leave the tree clean. End with 'RESULT: PASS <summary>' or 'RESULT: FAIL <blocker>'." \
-        --model "$MODEL" --format json >>"$(log_of "$issue")" 2>>"$LOG_DIR/$issue.err") || true
+Fix the failures (stay within your spec's scope), commit, leave the tree clean. End with 'RESULT: PASS <summary>' or 'RESULT: FAIL <blocker>'." "$sid" || true
     fi
   done
   echo "[orch] $issue: GATE FAIL after $GATE_MAX_ATTEMPTS attempts — orchestrator attention needed"
@@ -111,10 +150,8 @@ cmd_spawn() {
     git -C "$ROOT" worktree add "$dir" -b "$branch" "$base" >/dev/null
   fi
   echo "[orch] $issue: worker starting on $branch (model $MODEL)"
-  cd "$dir"
-  opencode run "$(worker_prompt "$issue" "$spec" "$branch")" \
-    --model "$MODEL" --format json >"$(log_of "$issue")" 2>"$LOG_DIR/$issue.err"
-  echo "[orch] $issue: worker exited $?"
+  watched_run "$issue" "$(worker_prompt "$issue" "$spec" "$branch")" || true
+  echo "[orch] $issue: worker finished"
   tail -c 2000 "$(log_of "$issue")" | grep -o 'RESULT: \(PASS\|FAIL\)[^"]*' | tail -1 || echo "[orch] $issue: no RESULT line found"
   gate_loop "$issue"
 }
@@ -122,12 +159,10 @@ cmd_spawn() {
 cmd_resume() {
   local issue="$1" feedback="$2" sid dir
   sid="$(session_of "$issue")"; dir="$(wt "$issue")"
-  cd "$dir"
-  opencode run -s "$sid" "$feedback
+  watched_run "$issue" "$feedback
 
-End your final message with exactly one line: 'RESULT: PASS <summary>' or 'RESULT: FAIL <blocker>'." \
-    --model "$MODEL" --format json >>"$(log_of "$issue")" 2>>"$LOG_DIR/$issue.err"
-  echo "[orch] $issue: resume exited $?"
+End your final message with exactly one line: 'RESULT: PASS <summary>' or 'RESULT: FAIL <blocker>'." "$sid" || true
+  echo "[orch] $issue: resume finished"
   tail -c 2000 "$(log_of "$issue")" | grep -o 'RESULT: \(PASS\|FAIL\)[^"]*' | tail -1 || true
   gate_loop "$issue"
 }
