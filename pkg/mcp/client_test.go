@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	hectormcp "github.com/iamhectordev/hector/internal/mcp"
+	hectormcp "github.com/iamhectordev/hector/pkg/mcp"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/require"
 )
